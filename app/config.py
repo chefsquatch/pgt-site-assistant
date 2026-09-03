@@ -20,8 +20,12 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 CORPUS_DIR = ROOT_DIR / "corpus"
 STATIC_DIR = ROOT_DIR / "static"
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
+# .strip() is load-bearing: a key pasted into a deploy dashboard often carries a
+# trailing newline or space. httpx refuses to send an x-api-key header containing
+# whitespace and the SDK surfaces that as a bare "Connection error" (the request
+# never leaves) — indistinguishable from a network failure unless you strip here.
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5").strip()
 
 # The founder's real inbox — the single handoff target. Public-facing already.
 FOUNDER_EMAIL = os.getenv("FOUNDER_EMAIL", "lesfleming@precisionguessworktech.com")
