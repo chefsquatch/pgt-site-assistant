@@ -1,0 +1,7 @@
+# Pinned to the versions this assistant was built and proven against.
+anthropic==0.69.0
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-dotenv==1.0.1
+# Used by the error-handling smoke test (FastAPI TestClient); harmless in prod.
+httpx==0.28.1

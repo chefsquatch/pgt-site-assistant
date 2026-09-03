@@ -1,0 +1,21 @@
+# Render.com blueprint. Push this repo, "New + > Blueprint", point at it, then set
+# ANTHROPIC_API_KEY in the dashboard (sync:false keeps it out of the repo).
+#
+# No build-time model download or vector store here — grounding is corpus-in-context,
+# so the service boots fast and binds its port immediately.
+services:
+  - type: web
+    name: pgt-site-assistant
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-4-5
+      - key: FOUNDER_EMAIL
+        value: lesfleming@precisionguessworktech.com
+      - key: PYTHON_VERSION
+        value: "3.12.6"
