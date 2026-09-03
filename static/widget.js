@@ -77,6 +77,8 @@
     ".pgtw{position:fixed;right:20px;bottom:20px;z-index:2147483000;" +
     "font-family:-apple-system,'Segoe UI',Roboto,system-ui,sans-serif;font-size:15px;line-height:1.55}" +
     ".pgtw *{box-sizing:border-box}" +
+    // hidden must win over class display rules (e.g. the success view's flex).
+    ".pgtw [hidden]{display:none!important}" +
     ".pgtw-launch{display:inline-flex;align-items:center;gap:10px;cursor:pointer;border:none;" +
     "color:#fff;font-weight:700;font-size:15px;padding:0 18px;height:52px;border-radius:26px;" +
     "background:linear-gradient(180deg," + t.redHot + "," + t.red + ");" +
@@ -129,7 +131,7 @@
     ".pgtw-grounded svg{width:12px;height:12px}" +
     ".pgtw-handoff{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;text-decoration:none;" +
     "background:" + t.amber + ";color:" + t.bg + ";font-weight:700;font-size:13.5px;padding:9px 15px;" +
-    "border-radius:10px;margin-top:2px}" +
+    "border-radius:10px;margin-top:2px;border:none;cursor:pointer;font-family:inherit}" +
     ".pgtw-handoff:hover{filter:brightness(1.08)}" +
     ".pgtw-err{align-self:stretch;font-size:13px;color:#ffb4ab;background:rgba(212,48,47,.12);" +
     "border:1px solid rgba(212,48,47,.35);border-radius:10px;padding:10px 12px}" +
@@ -152,6 +154,35 @@
     ".pgtw-tag b{color:" + t.muted + ";font-weight:700}" +
     "@media (max-width:480px){.pgtw-panel{right:8px;bottom:8px;width:calc(100vw - 16px);height:calc(100vh - 16px)}" +
     ".pgtw{right:12px;bottom:12px}}" +
+    // --- Contact form popup (a centered modal; front-and-center on submit) ---
+    ".pgtw-modal-ov{position:fixed;inset:0;z-index:2147483001;background:rgba(0,0,0,.62);" +
+    "backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:18px}" +
+    ".pgtw-modal-ov.pgtw-open{display:flex}" +
+    ".pgtw-modal{width:min(432px,100%);max-height:calc(100vh - 36px);overflow-y:auto;" +
+    "background:" + t.panel + ";color:" + t.text + ";border:1px solid " + t.line + ";border-radius:16px;" +
+    "box-shadow:0 30px 70px rgba(0,0,0,.6);animation:pgtw-teaser-in .2s ease-out}" +
+    ".pgtw-modal-head{display:flex;align-items:flex-start;gap:11px;padding:18px 18px 4px}" +
+    ".pgtw-modal-h{flex:1;min-width:0}" +
+    ".pgtw-modal-h b{display:block;font-family:Oswald,'Arial Narrow',sans-serif;text-transform:uppercase;" +
+    "letter-spacing:.03em;font-size:17px;line-height:1.2}" +
+    ".pgtw-modal-h span{font-size:12.5px;color:" + t.muted + "}" +
+    ".pgtw-cform{display:flex;flex-direction:column;gap:11px;padding:12px 18px 18px}" +
+    ".pgtw-field{display:flex;flex-direction:column;gap:5px}" +
+    ".pgtw-field label{font-size:12px;color:" + t.muted + "}" +
+    ".pgtw-field input,.pgtw-field textarea{background:" + t.bg + ";color:" + t.text + ";" +
+    "border:1px solid " + t.line + ";border-radius:10px;padding:10px 12px;font:inherit;outline:none;width:100%}" +
+    ".pgtw-field input:focus,.pgtw-field textarea:focus{border-color:" + t.red + "}" +
+    ".pgtw-field textarea{min-height:96px;resize:vertical}" +
+    ".pgtw-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none}" +
+    ".pgtw-submit{margin-top:2px;border:none;cursor:pointer;color:#fff;font-weight:700;font-size:15px;" +
+    "font-family:inherit;padding:12px;border-radius:11px;background:linear-gradient(180deg," + t.redHot + "," + t.red + ")}" +
+    ".pgtw-submit:hover{filter:brightness(1.06)}" +
+    ".pgtw-submit:disabled{opacity:.5;cursor:default;filter:none}" +
+    ".pgtw-cstatus{font-size:13px;color:" + t.muted + ";min-height:1.1em}" +
+    ".pgtw-cstatus.err{color:#ffb4ab}" +
+    ".pgtw-csuccess{padding:26px 20px 22px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px}" +
+    ".pgtw-csuccess b{font-size:16px}" +
+    ".pgtw-csuccess span{font-size:13.5px;color:" + t.muted + ";max-width:280px}" +
     "@media (prefers-reduced-motion:reduce){.pgtw *{transition:none!important;animation:none!important}}";
 
   var style = document.createElement("style");
@@ -172,6 +203,10 @@
   var CHECK_ICON =
     '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12l5 5L20 6" stroke="' + t.green +
     '" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var BIG_CHECK =
+    '<svg width="46" height="46" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<circle cx="12" cy="12" r="10" stroke="' + t.green + '" stroke-width="1.5" opacity=".5"/>' +
+    '<path d="M7.5 12.4l3 3 6-6.6" stroke="' + t.green + '" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   // --- Build DOM ------------------------------------------------------------
   var root = document.createElement("div");
@@ -196,6 +231,45 @@
     '<div class="pgtw-tag">Answers from <b>what PGT actually offers</b>. Nothing invented.</div>' +
     "</section>";
   document.body.appendChild(root);
+
+  // --- Contact form modal (replaces the old mailto: handoff) ----------------
+  var modalOv = document.createElement("div");
+  modalOv.className = "pgtw-modal-ov";
+  modalOv.innerHTML =
+    '<div class="pgtw-modal" role="dialog" aria-modal="true" aria-label="Send a message to PGT">' +
+    '<div class="pgtw-modal-head">' + MARK +
+    '<div class="pgtw-modal-h"><b>Send a message</b>' +
+    "<span>Goes straight to Les — he replies to your email.</span></div>" +
+    '<button class="pgtw-close pgtw-cclose" aria-label="Close">×</button></div>' +
+    '<form class="pgtw-cform" novalidate>' +
+    '<div class="pgtw-field"><label>Your email *</label>' +
+    '<input type="email" class="pgtw-c-email" required autocomplete="email" maxlength="254" placeholder="you@company.com"></div>' +
+    '<div class="pgtw-field"><label>Your name</label>' +
+    '<input type="text" class="pgtw-c-name" autocomplete="name" maxlength="100" placeholder="Optional"></div>' +
+    '<div class="pgtw-field"><label>Message *</label>' +
+    '<textarea class="pgtw-c-msg" required maxlength="5000" placeholder="What are you trying to build or fix?"></textarea></div>' +
+    // Honeypot: hidden from people, tempting to bots. Filled -> silently dropped.
+    '<input type="text" class="pgtw-hp pgtw-c-company" tabindex="-1" autocomplete="off" aria-hidden="true">' +
+    '<button type="submit" class="pgtw-submit">Send to Les</button>' +
+    '<div class="pgtw-cstatus" role="status" aria-live="polite"></div>' +
+    "</form>" +
+    '<div class="pgtw-csuccess" hidden>' + BIG_CHECK +
+    "<b>Message sent</b><span class=\"pgtw-cs-note\"></span>" +
+    '<button type="button" class="pgtw-submit pgtw-cdone" style="margin-top:12px;min-width:120px">Done</button></div>' +
+    "</div>";
+  root.appendChild(modalOv);
+
+  var modalForm = modalOv.querySelector(".pgtw-cform");
+  var modalSuccess = modalOv.querySelector(".pgtw-csuccess");
+  var cEmail = modalOv.querySelector(".pgtw-c-email");
+  var cName = modalOv.querySelector(".pgtw-c-name");
+  var cMsg = modalOv.querySelector(".pgtw-c-msg");
+  var cCompany = modalOv.querySelector(".pgtw-c-company");
+  var cStatus = modalOv.querySelector(".pgtw-cstatus");
+  var cSubmit = modalForm.querySelector(".pgtw-submit");
+  var cClose = modalOv.querySelector(".pgtw-cclose");
+  var cDone = modalOv.querySelector(".pgtw-cdone");
+  var cNote = modalOv.querySelector(".pgtw-cs-note");
 
   var wrap = root.querySelector(".pgtw-launch-wrap");
   var launch = root.querySelector(".pgtw-launch");
@@ -252,23 +326,18 @@
     scrollDown();
   }
   function addHandoff(summary) {
-    var subject = "Project inquiry — PGT (via site assistant)";
-    var body =
-      (summary ? summary + "\n\n" : "") +
-      "—\nSent from the PGT site assistant. I'd like to discuss this with you.";
-    var href =
-      "mailto:" + FOUNDER_EMAIL +
-      "?subject=" + encodeURIComponent(subject) +
-      "&body=" + encodeURIComponent(body);
-    var a = document.createElement("a");
-    a.className = "pgtw-handoff";
-    a.href = href;
-    a.innerHTML =
+    // Opens the inline contact form (POSTs to /contact), pre-filled with the
+    // problem summary — no mailto:, so it works without a configured mail client.
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "pgtw-handoff";
+    b.innerHTML =
       '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">' +
       '<rect x="3" y="5" width="18" height="14" rx="2" stroke="' + t.bg + '" stroke-width="2"/>' +
       '<path d="M4 7l8 6 8-6" stroke="' + t.bg + '" stroke-width="2" stroke-linejoin="round"/></svg>' +
-      "<span>Email Les with this summary</span>";
-    log.appendChild(a);
+      "<span>Send this to Les</span>";
+    b.addEventListener("click", function () { openContact(summary); });
+    log.appendChild(b);
     scrollDown();
   }
   function addError(fallback) {
@@ -356,9 +425,78 @@
       });
   }
 
+  // --- Contact form ---------------------------------------------------------
+  function openContact(prefill) {
+    if (prefill && !cMsg.value.trim()) cMsg.value = prefill;
+    modalForm.hidden = false;
+    modalSuccess.hidden = true;
+    cStatus.textContent = "";
+    cStatus.className = "pgtw-cstatus";
+    cSubmit.disabled = false;
+    modalOv.classList.add("pgtw-open");
+    setTimeout(function () { (cEmail.value.trim() ? cMsg : cEmail).focus(); }, 60);
+  }
+  function closeContact() {
+    modalOv.classList.remove("pgtw-open");
+  }
+  function submitContact(e) {
+    e.preventDefault();
+    var email = cEmail.value.trim();
+    var msg = cMsg.value.trim();
+    // Client-side check is UX only — the server re-validates every field.
+    if (!email || !msg) {
+      cStatus.className = "pgtw-cstatus err";
+      cStatus.textContent = "Please add your email and a message.";
+      return;
+    }
+    cSubmit.disabled = true;
+    cStatus.className = "pgtw-cstatus";
+    cStatus.textContent = "Sending…";
+    fetch(API + "/contact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: email,
+        message: msg,
+        name: cName.value.trim(),
+        company: cCompany.value, // honeypot — always empty for real people
+      }),
+    })
+      .then(function (r) {
+        return r
+          .json()
+          .then(function (d) { return { ok: r.ok, data: d }; })
+          .catch(function () { return { ok: r.ok, data: {} }; });
+      })
+      .then(function (res) {
+        if (res.ok && res.data && res.data.ok) {
+          cNote.textContent = "Thanks — it's on its way to Les. He'll reply to " + email + ".";
+          modalForm.hidden = true;
+          modalSuccess.hidden = false;
+        } else {
+          cSubmit.disabled = false;
+          cStatus.className = "pgtw-cstatus err";
+          cStatus.textContent =
+            (res.data && res.data.error) ||
+            "That didn't go through — check your email address and try again.";
+        }
+      })
+      .catch(function () {
+        cSubmit.disabled = false;
+        cStatus.className = "pgtw-cstatus err";
+        cStatus.textContent = "Network error — please try again in a moment.";
+      });
+  }
+
   // --- Wire up --------------------------------------------------------------
   launch.addEventListener("click", openPanel);
   closeBtn.addEventListener("click", closePanel);
+  cClose.addEventListener("click", closeContact);
+  cDone.addEventListener("click", closeContact);
+  modalForm.addEventListener("submit", submitContact);
+  modalOv.addEventListener("click", function (e) {
+    if (e.target === modalOv) closeContact(); // click outside the card closes it
+  });
   send.addEventListener("click", sendMessage);
   input.addEventListener("input", function () {
     send.disabled = input.value.trim() === "" || busy;
@@ -372,7 +510,9 @@
     }
   });
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && panel.classList.contains("pgtw-open")) closePanel();
+    if (e.key !== "Escape") return;
+    if (modalOv.classList.contains("pgtw-open")) { closeContact(); return; }
+    if (panel.classList.contains("pgtw-open")) closePanel();
   });
 
   // Teaser bubble: click it (or its text) to open; the × just dismisses it.
@@ -393,7 +533,7 @@
   // that a tap BEFORE the widget finished downloading isn't lost — if it recorded
   // a pending open, honor it now instead of the visitor seeing nothing happen.
   var _stub = window.pgtAssistant;
-  window.pgtAssistant = { open: openPanel, close: closePanel };
+  window.pgtAssistant = { open: openPanel, close: closePanel, contact: openContact };
   if (_stub && _stub._pendingOpen) openPanel();
 
   // --- First-load attention ---------------------------------------------------

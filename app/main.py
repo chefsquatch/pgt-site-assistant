@@ -21,8 +21,27 @@ from pydantic import BaseModel
 
 from . import config, corpus
 from .assistant import AssistantError, ConfigError, GenerationError, respond
+from .contact import (
+    ContactConfigError,
+    ContactDeliveryError,
+    ContactRequest,
+    send_lead,
+)
 
 app = FastAPI(title="PGT Site Assistant")
+
+
+@app.on_event("startup")
+def _require_lead_delivery() -> None:
+    """Fail loudly at startup if the contact form can't deliver leads — better to
+    refuse to boot on a misconfigured deploy than to silently drop the first lead.
+    In production RESEND_API_KEY is set in the Render dashboard (like the Anthropic
+    key), so this passes and never affects the chat path."""
+    if not config.RESEND_API_KEY:
+        raise RuntimeError(
+            "RESEND_API_KEY is not set — the contact form cannot deliver leads. "
+            "Set it in the environment before starting (Render dashboard in prod)."
+        )
 
 app.add_middleware(
     CORSMiddleware,
@@ -88,6 +107,35 @@ def chat(req: ChatRequest) -> JSONResponse:
             "founder_email": config.FOUNDER_EMAIL,
         }
     )
+
+
+@app.post("/contact")
+def contact(req: ContactRequest) -> JSONResponse:
+    # Pydantic already rejected malformed/empty/oversized fields with a 422 before
+    # we get here — that IS the server-side validation.
+    #
+    # Honeypot: a filled hidden field means a bot. Accept silently (return the same
+    # success shape) and send nothing, so the bot gets no signal it was caught.
+    if req.is_bot():
+        return JSONResponse(content={"ok": True})
+
+    try:
+        send_lead(req)
+    except ContactConfigError as exc:
+        return JSONResponse(status_code=503, content={"ok": False, "error": str(exc)})
+    except ContactDeliveryError as exc:
+        return JSONResponse(
+            status_code=502,
+            content={
+                "ok": False,
+                "error": (
+                    "Sorry — I couldn't send that just now. You can email Les "
+                    f"directly at {config.FOUNDER_EMAIL}."
+                ),
+            },
+        )
+
+    return JSONResponse(content={"ok": True})
 
 
 @app.get("/")

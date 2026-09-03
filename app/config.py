@@ -27,8 +27,24 @@ STATIC_DIR = ROOT_DIR / "static"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5").strip()
 
-# The founder's real inbox — the single handoff target. Public-facing already.
+# The founder's PUBLIC address — shown to visitors ("reach Les at ..."). Never
+# changes based on the email plumbing below.
 FOUNDER_EMAIL = os.getenv("FOUNDER_EMAIL", "lesfleming@precisionguessworktech.com")
+
+# Where the contact form actually DELIVERS leads. Decoupled from the public
+# address on purpose: with Resend's shared onboarding sender (no verified domain
+# yet), email can only be delivered to the Resend account's own address. Set
+# LEAD_INBOX to whatever email you signed up to Resend with. Defaults to the
+# public address (correct once precisionguessworktech.com is a verified sender).
+LEAD_INBOX = os.getenv("LEAD_INBOX", "").strip() or FOUNDER_EMAIL
+
+# Contact form -> transactional email via Resend. The key is required to boot
+# (see main.py startup): we refuse to accept leads we can't deliver. Stripped for
+# the same pasted-whitespace reason as the Anthropic key.
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
+# Resend's shared onboarding sender works immediately; verifying
+# precisionguessworktech.com as the sender domain is a later optional polish.
+RESEND_FROM = os.getenv("RESEND_FROM", "PGT Site <onboarding@resend.dev>").strip()
 
 # Cap on conversation length sent to the model (turns kept from the tail).
 MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", "24"))

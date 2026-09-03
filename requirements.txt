@@ -3,5 +3,7 @@ anthropic==0.69.0
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 python-dotenv==1.0.1
-# Used by the error-handling smoke test (FastAPI TestClient); harmless in prod.
+# httpx: FastAPI TestClient AND the Resend delivery call for the contact form.
 httpx==0.28.1
+# EmailStr validation for the contact endpoint (server-side email-format gate).
+email-validator==2.2.0
