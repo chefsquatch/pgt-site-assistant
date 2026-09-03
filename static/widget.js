@@ -389,7 +389,12 @@
 
   // Let the host page open/close the assistant (e.g. a hero CTA button):
   //   <button onclick="window.pgtAssistant.open()">Ask our assistant</button>
+  // A tiny queue-stub may already exist (set inline before this script loads) so
+  // that a tap BEFORE the widget finished downloading isn't lost — if it recorded
+  // a pending open, honor it now instead of the visitor seeing nothing happen.
+  var _stub = window.pgtAssistant;
   window.pgtAssistant = { open: openPanel, close: closePanel };
+  if (_stub && _stub._pendingOpen) openPanel();
 
   // --- First-load attention ---------------------------------------------------
   // Draw a brand-new visitor to the assistant so it's the first thing they meet.
