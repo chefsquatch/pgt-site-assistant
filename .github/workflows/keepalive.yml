@@ -1,0 +1,22 @@
+# Keeps the free Render instance awake by pinging it every ~10 minutes, so the
+# assistant answers instantly instead of cold-starting (~50s) for a visitor after
+# a period of inactivity. A single always-on free web service stays within
+# Render's free monthly hours. (This is the free alternative to a paid instance.)
+#
+# Note: GitHub disables scheduled workflows after 60 days with no repo activity,
+# and cron timing is best-effort (can lag). For rock-solid uptime, also point an
+# external monitor (e.g. UptimeRobot, 5-min interval) at /health.
+name: keep-alive
+
+on:
+  schedule:
+    - cron: "*/10 * * * *" # every 10 minutes
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the assistant health endpoint
+        # `|| true` so a cold-start timeout never marks the run failed (no noise).
+        run: curl -fsS --max-time 90 https://pgt-site-assistant.onrender.com/health || true

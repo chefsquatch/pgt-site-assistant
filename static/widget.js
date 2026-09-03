@@ -39,6 +39,12 @@
       "Hi — I'm PGT's assistant. I answer from what PGT actually offers, and I'll " +
         "tell you straight when something's outside that. What are you trying to build or fix?"
     );
+  var TEASER =
+    cfg.teaser ||
+    attr("data-teaser", "Ask me anything about PGT — I won't make things up.");
+  // Auto-open the panel once for a brand-new visitor (desktop only, so it never
+  // takes over a phone screen). Set window.PGT_ASSISTANT.autoOpen=false to disable.
+  var AUTO_OPEN = cfg.autoOpen !== false && attr("data-auto-open", "true") !== "false";
 
   // --- Theme (matches the live PGT site; override via window.PGT_ASSISTANT.theme)
   var t = Object.assign(
@@ -78,6 +84,21 @@
     "transition:transform .15s ease,box-shadow .15s ease}" +
     ".pgtw-launch:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(212,48,47,.5)}" +
     ".pgtw-launch svg{width:22px;height:22px;flex:none}" +
+    ".pgtw-launch{position:relative}" +
+    ".pgtw-launch-wrap{display:flex;flex-direction:column;align-items:flex-end;gap:10px}" +
+    ".pgtw-launch.pgtw-pulse::after{content:'';position:absolute;inset:0;border-radius:26px;pointer-events:none;" +
+    "box-shadow:0 0 0 0 rgba(255,75,62,.5);animation:pgtw-pulse 2.2s ease-out infinite}" +
+    "@keyframes pgtw-pulse{0%{box-shadow:0 0 0 0 rgba(255,75,62,.5)}70%{box-shadow:0 0 0 18px rgba(255,75,62,0)}" +
+    "100%{box-shadow:0 0 0 0 rgba(255,75,62,0)}}" +
+    ".pgtw-teaser{position:relative;max-width:232px;background:" + t.panel + ";color:" + t.text + ";" +
+    "border:1px solid " + t.line + ";border-radius:14px;border-bottom-right-radius:4px;padding:12px 30px 12px 14px;" +
+    "font-size:13.5px;line-height:1.45;box-shadow:0 12px 32px rgba(0,0,0,.45);cursor:pointer;" +
+    "animation:pgtw-teaser-in .25s ease-out}" +
+    ".pgtw-teaser b{color:" + t.redHot + "}" +
+    ".pgtw-teaser-x{position:absolute;top:5px;right:7px;background:transparent;border:none;color:" + t.muted + ";" +
+    "font-size:15px;line-height:1;cursor:pointer;padding:2px 5px;border-radius:6px}" +
+    ".pgtw-teaser-x:hover{color:" + t.text + "}" +
+    "@keyframes pgtw-teaser-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}" +
     ".pgtw-dot{width:8px;height:8px;border-radius:50%;background:" + t.green + ";" +
     "box-shadow:0 0 0 3px rgba(78,192,122,.25)}" +
     ".pgtw-panel{position:fixed;right:20px;bottom:20px;width:388px;max-width:calc(100vw - 32px);" +
@@ -156,9 +177,13 @@
   var root = document.createElement("div");
   root.className = "pgtw";
   root.innerHTML =
+    '<div class="pgtw-launch-wrap">' +
+    '<div class="pgtw-teaser" hidden role="button" tabindex="0" aria-label="Open PGT assistant">' +
+    esc(TEASER) +
+    '<button class="pgtw-teaser-x" aria-label="Dismiss">×</button></div>' +
     '<button class="pgtw-launch" aria-label="Open PGT assistant">' +
     CHAT_ICON +
-    "<span>" + esc(TITLE) + "</span></button>" +
+    "<span>" + esc(TITLE) + "</span></button></div>" +
     '<section class="pgtw-panel" role="dialog" aria-label="PGT assistant" aria-modal="false">' +
     '<header class="pgtw-head">' + MARK +
     '<div class="pgtw-htext"><span class="pgtw-title">' + esc(TITLE) + "</span>" +
@@ -172,12 +197,31 @@
     "</section>";
   document.body.appendChild(root);
 
+  var wrap = root.querySelector(".pgtw-launch-wrap");
   var launch = root.querySelector(".pgtw-launch");
+  var teaser = root.querySelector(".pgtw-teaser");
+  var teaserX = root.querySelector(".pgtw-teaser-x");
   var panel = root.querySelector(".pgtw-panel");
   var log = root.querySelector(".pgtw-log");
   var input = root.querySelector(".pgtw-in");
   var send = root.querySelector(".pgtw-send");
   var closeBtn = root.querySelector(".pgtw-close");
+
+  // Remember, per browser, whether this visitor has engaged — so the pulse,
+  // teaser, and first-visit auto-open only pester brand-new visitors, never
+  // returning ones. Wrapped in try/catch: storage can throw in private mode.
+  function seen() {
+    try { return localStorage.getItem("pgt_assistant_seen") === "1"; } catch (e) { return false; }
+  }
+  function markSeen() {
+    try { localStorage.setItem("pgt_assistant_seen", "1"); } catch (e) {}
+  }
+  function hideTeaser() {
+    if (teaser) teaser.hidden = true;
+  }
+  function stopPulse() {
+    launch.classList.remove("pgtw-pulse");
+  }
 
   // --- Helpers --------------------------------------------------------------
   function esc(s) {
@@ -253,8 +297,11 @@
 
   var greeted = false;
   function openPanel() {
+    markSeen();
+    hideTeaser();
+    stopPulse();
     panel.classList.add("pgtw-open");
-    launch.style.display = "none";
+    wrap.style.display = "none";
     if (!greeted) {
       greeted = true;
       addBubble("bot", GREETING);
@@ -263,7 +310,7 @@
   }
   function closePanel() {
     panel.classList.remove("pgtw-open");
-    launch.style.display = "inline-flex";
+    wrap.style.display = "flex";
   }
 
   // --- Networking -----------------------------------------------------------
@@ -327,4 +374,39 @@
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && panel.classList.contains("pgtw-open")) closePanel();
   });
+
+  // Teaser bubble: click it (or its text) to open; the × just dismisses it.
+  teaser.addEventListener("click", openPanel);
+  teaser.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPanel(); }
+  });
+  teaserX.addEventListener("click", function (e) {
+    e.stopPropagation();
+    hideTeaser();
+    stopPulse();
+    markSeen(); // an explicit dismiss counts as "seen" — don't re-pester
+  });
+
+  // Let the host page open/close the assistant (e.g. a hero CTA button):
+  //   <button onclick="window.pgtAssistant.open()">Ask our assistant</button>
+  window.pgtAssistant = { open: openPanel, close: closePanel };
+
+  // --- First-load attention ---------------------------------------------------
+  // Draw a brand-new visitor to the assistant so it's the first thing they meet.
+  // Returning visitors (who've engaged before) get a calm, un-pulsing launcher.
+  if (!seen()) {
+    launch.classList.add("pgtw-pulse");
+    var isDesktop = window.matchMedia("(min-width: 768px)").matches;
+    if (AUTO_OPEN && isDesktop) {
+      // Desktop: open the panel once, unobtrusively, shortly after load.
+      setTimeout(function () {
+        if (!seen() && !panel.classList.contains("pgtw-open")) openPanel();
+      }, 1600);
+    } else {
+      // Mobile (or auto-open off): show the teaser instead of taking the screen.
+      setTimeout(function () {
+        if (!seen() && !panel.classList.contains("pgtw-open")) teaser.hidden = false;
+      }, 1400);
+    }
+  }
 })();
