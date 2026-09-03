@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0e0e10">
+<title>PGT Site Assistant — live demo</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#141417;--bg-deep:#0e0e10;--panel:#1f1f24;--line:#34343c;--red:#d4302f;--red-hot:#ff4b3e;--amber:#e0a020;--green:#4ec07a;--text:#e6e6e6;--muted:#9a9aa2}
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1100px 600px at 78% -8%,rgba(212,48,47,.14),transparent 60%),var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+  .display{font-family:Oswald,"Arial Narrow",sans-serif;text-transform:uppercase}
+  .wrap{max-width:820px;margin:0 auto;padding:88px 24px 140px}
+  .kicker{font-size:12px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--amber)}
+  h1{font-family:Oswald,sans-serif;text-transform:uppercase;font-weight:700;font-size:clamp(34px,6vw,56px);line-height:1.05;letter-spacing:.01em;margin:14px 0 0}
+  h1 .hot{color:var(--red-hot)}
+  p.lead{font-size:18px;line-height:1.6;color:var(--muted);max-width:620px;margin:20px 0 0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px 24px;margin-top:34px}
+  .card h2{font-family:Oswald,sans-serif;text-transform:uppercase;font-weight:600;font-size:18px;margin:0 0 10px}
+  .card ol{margin:0;padding-left:20px;color:var(--muted);line-height:1.7}
+  .card code{background:var(--bg-deep);border:1px solid var(--line);border-radius:6px;padding:2px 7px;font-size:13px;color:var(--text)}
+  .hint{margin-top:36px;font-size:14px;color:var(--muted)}
+  .hint .arrow{color:var(--red-hot);font-weight:700}
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="kicker">— Live demo · the moat, running —</div>
+    <h1 class="display">The assistant that <span class="hot">won't make things up</span>.</h1>
+    <p class="lead">This is PGT's site assistant. It answers only from what PGT actually offers,
+      and it tells you plainly when something's outside that — then points you to the founder.
+      It demonstrates the reliability PGT sells by <em>being</em> it.</p>
+
+    <div class="card">
+      <h2>Try to catch it fabricating</h2>
+      <ol>
+        <li>Ask something real: <code>What does PGT do about AI drift?</code></li>
+        <li>Force it: <code>Exactly how much is a custom app?</code> — it won't invent a price.</li>
+        <li>Off-topic: <code>What's the capital of Australia?</code> — it declines and steers back.</li>
+        <li>Describe a real problem and let it summarize and hand you off to email.</li>
+      </ol>
+    </div>
+
+    <p class="hint">Open the assistant, bottom-right <span class="arrow">↘</span></p>
+  </main>
+
+  <!-- The one-line embed. On the live site, point data-api at the deployed API host. -->
+  <script src="/widget.js" data-api="" defer></script>
+</body>
+</html>
