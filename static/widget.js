@@ -60,6 +60,11 @@
   var history = []; // [{role, content}]
   var busy = false;
 
+  // Wake the service on page load (fire-and-forget). On a spun-down free-tier
+  // instance this starts the ~cold start early, so by the time a visitor opens
+  // the chat and types, it's already warm and the first reply feels instant.
+  try { fetch(API + "/health", { method: "GET", mode: "cors" }).catch(function () {}); } catch (e) {}
+
   // --- Styles (scoped under .pgtw; won't touch the host site) ----------------
   var css =
     "" +
