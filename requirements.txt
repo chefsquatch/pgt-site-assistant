@@ -7,3 +7,7 @@ python-dotenv==1.0.1
 httpx==0.28.1
 # EmailStr validation for the contact endpoint (server-side email-format gate).
 email-validator==2.2.0
+# The engine's tenant-scoped store (Brick 1). psycopg3 gives REAL multi-statement
+# transactions, which the RLS wall requires (set_config LOCAL to a txn + scoped
+# queries in the same txn). The chat/contact paths do not import it yet.
+psycopg[binary]==3.3.6
