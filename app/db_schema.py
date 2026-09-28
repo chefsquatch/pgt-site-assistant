@@ -63,12 +63,21 @@ CREATE INDEX IF NOT EXISTS lead_tenant_idx ON lead (tenant_id);
 def rls_policy_statements() -> list[str]:
     """SQL that raises the wall — applied at init time and in the wall test.
 
+    RLS is DEFENSE ONE, not the whole wall. ⚠ Neon's default role (`neondb_owner`) has
+    the BYPASSRLS attribute (verified live 2026-09-28: rolbypassrls = true), and a role
+    with BYPASSRLS skips row-level security ENTIRELY — even with FORCE. So on Neon these
+    policies are NOT self-sufficient; isolation ALSO depends on defense two: every scoped
+    query carries an explicit `tenant_id` filter / tag in SQL (create_lead tags the row;
+    scoped reads must filter). This is the same conclusion Tinker reached on 2026-09-25
+    when a live test caught `neondb_owner` bypassing RLS. See freeze F6 in
+    canon/SESSION_CONSTITUTION.md and tests/test_defense_in_depth.py.
+
     For every tenant-scoped table we:
       1. ENABLE row-level security, and
-      2. FORCE it — so the policy applies even to the table owner. Without FORCE the
-         owner bypasses RLS and the wall is decoration; FORCE is what makes a
-         cross-tenant read structurally impossible (Neon connects as a non-superuser,
-         so a forced policy binds that connection as-is).
+      2. FORCE it — so the policy applies even to the table owner (without FORCE the
+         owner bypasses its own table's RLS). FORCE does NOT override BYPASSRLS, so on
+         Neon this is belt-and-suspenders with the explicit tenant_id filters, not a
+         standalone wall.
       3. Install a policy that only admits rows whose tenant_id equals the id set for
          the current transaction via set_config('app.tenant_id', <id>, true).
 

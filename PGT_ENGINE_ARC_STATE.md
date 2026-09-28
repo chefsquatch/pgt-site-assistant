@@ -106,18 +106,58 @@ so the wall binds exactly as on Neon.
 - Did not deploy: Neon `DATABASE_URL` + one `python -m scripts.init_db` in prod remain
   founder-hands owed (below). The brick is proven; prod wiring is the deploy step.
 
-### Owed (owner: founder) — for DEPLOY
+### ⚠⚠ WALL DEFECT FOUND ON REAL NEON + FIXED (F6 defense-in-depth) — same session
 
-- **`DATABASE_URL`** — Neon (new database, same account as Tinker; POOLED/transaction
-  string, NOT the HTTP driver). Set on Render + local `.env`. Guided setup available.
-- Run **`python -m scripts.init_db`** once against that `DATABASE_URL` to apply
-  schema + RLS and seed PGT tenant zero in prod. Until then, `capture_lead` no-ops
-  safely (logs + returns None) and the contact email still delivers — no lead lost, but
-  chat handoffs are not yet persisted in prod.
+During the Neon deploy verification (see below) I proved the RLS wall **does not hold on
+the real deploy substrate**. Neon's default role **`neondb_owner` has `BYPASSRLS = true`**
+(verified live 2026-09-28) — and a role with BYPASSRLS skips row-level security ENTIRELY,
+even with `FORCE`. Empirically on Neon an UNSCOPED read returned rows that RLS should have
+hidden. So Brick 1's claim "the wall is proven / FORCE binds Neon as-is" was **false on
+Neon** — it was only ever proven on local PG via the fixture's NOSUPERUSER role switch.
+
+**This is the exact bug Tinker hit on 2026-09-25** (`tests/tenant-defense-in-depth.test.ts`).
+Tinker's adopted fix — ported here per "port known architecture, don't invent":
+**defense in depth (new freeze F6).** RLS stays (defense one, for any enforcing role);
+additionally **every scoped query carries an explicit `tenant_id` filter/tag in SQL**
+(defense two), so isolation holds whether or not RLS runs.
+
+- `create_lead()` already tags `tenant_id` explicitly → the WRITE path never leaked
+  (the "leak" seen was a raw unscoped SELECT in a smoke script, not an engine query).
+- Corrected the false comments in `db_schema.py` + `db.py`; refined `create_lead`'s.
+- Added **F6** to `canon/SESSION_CONSTITUTION.md` (binds Brick 4+ admin reads to filter
+  `tenant_id`, not trust RLS).
+- Added `tests/test_defense_in_depth.py` — mirrors Tinker's: DISABLES RLS (the real prod
+  condition) and proves the explicit `tenant_id` filter still isolates create_lead's rows.
+
+**Proof of F6 (transcribed):**
+- Full suite **15 passed** on local PG (2 defense-in-depth + 6 capture + 7 wall).
+- **Watched go red:** dropped the `WHERE tenant_id` filter → with RLS off the read
+  returned BOTH tenants' rows (the leak). Restored → green.
+- **Proven on REAL Neon** (`neondb_owner`, RLS genuinely bypassed): an unfiltered read
+  saw **2 rows** (confirming RLS is not the wall there), while reads filtered by
+  `tenant_id` returned each tenant's own row ONLY. Smoke rows + throwaway tenant deleted
+  → prod pristine (0 leads, only `pgt`).
+
+### DEPLOY — Neon PROVISIONED this session (was owed)
+
+- Neon project **`pgt-engine`** created (founder, same account as Tinker; Tinker's
+  project untouched). **Pooled** connection string appended to local `.env` as
+  `DATABASE_URL` (gitignored). `python -m scripts.init_db` run against it →
+  schema + RLS applied, **PGT tenant zero seeded** (`slug='pgt'`).
+- **Still owed (founder):** set the SAME `DATABASE_URL` in the **Render** dashboard
+  (Environment tab) so the deployed site persists leads. Until then, prod chat handoffs
+  no-op safely (log + return None) and the contact email still delivers — no lead lost.
 
 ---
 
 ## BRICK 1 — Tenant-scoped store + RLS wall (PGT tenant zero) — **LANDED 2026-09-27**
+
+> ⚠ **CORRECTION 2026-09-28:** Brick 1's wall was proven only on local PG (NOSUPERUSER
+> role switch). On real Neon the connecting role `neondb_owner` has **BYPASSRLS**, so RLS
+> alone does NOT isolate tenants in production. Isolation now rests on **F6 defense in
+> depth** (explicit `tenant_id` filters) with RLS as the second layer. See the Brick 2
+> entry above. The RLS mechanism, `with_tenant()` doorway, and tenant-zero seed all stand;
+> only the "RLS alone is the wall" framing was wrong.
 
 **Session:** 2026-09-27 · Opus 4.8 · founder GO on the 7-brick sequence + EXPAND +
 Neon store (new database, same account) + Neon test branch for the red control.

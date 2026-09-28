@@ -44,9 +44,12 @@ def create_lead(
 ) -> str:
     """Insert one lead for `tenant_id`, THROUGH the wall, and return its id.
 
-    The row's tenant_id is the same id with_tenant() binds to app.tenant_id, so the RLS
-    WITH CHECK predicate admits it. A row tagged for any other tenant would be rejected
-    by the wall — the doorway cannot be tricked into a cross-tenant write.
+    Defense in depth (F6): the row's tenant_id is written EXPLICITLY (defense two), and it
+    is the same id with_tenant() binds to app.tenant_id (defense one). So the row is
+    correctly tagged whether or not RLS is enforced — which matters because Neon's role
+    bypasses RLS. When RLS IS enforced, WITH CHECK additionally rejects a mismatched tag;
+    when it is bypassed, the explicit tag is what keeps the row on the right tenant. The
+    caller always passes the scoping tenant's own id, so the two can never diverge here.
     """
 
     def _insert(c: db.psycopg.Connection) -> str:

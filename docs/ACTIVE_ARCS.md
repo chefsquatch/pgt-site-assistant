@@ -21,7 +21,7 @@ brick-one red-control proven on a **Neon test branch**.
 | # | Brick | Depends on | Status |
 |---|---|---|---|
 | 1 | Tenant-scoped store + RLS wall (PGT tenant zero) | — | **LANDED 2026-09-27** (wall proven: 7 passed + red control + mutation-red) |
-| 2 | Lead capture → store (assistant writes leads through `with_tenant`) | 1 | **LANDED 2026-09-28** (13 passed; /chat + /contact wired; commit-rollback bug found+fixed; owed: prod `DATABASE_URL` + `init_db`) |
+| 2 | Lead capture → store (assistant writes leads through `with_tenant`) | 1 | **LANDED 2026-09-28** (15 passed; /chat + /contact wired; commit-rollback bug found+fixed; ⚠ found Neon `neondb_owner` BYPASSRLS → ported Tinker's **F6 defense-in-depth**, proven on real Neon; Neon provisioned + tenant zero seeded) |
 | 3 | Admin auth (scrypt password + HMAC signed HttpOnly cookie) | 1 | SLATED |
 | 4 | Admin view (see/organize leads, tenant-scoped) | 1,2,3 | SLATED |
 | 5 | Availability store (admin edits schedule/availability) | 1 | SLATED |
@@ -33,11 +33,15 @@ brick-one red-control proven on a **Neon test branch**.
 ## Owed from the founder (by brick)
 
 - **B1:** DONE (wall proven on local PG).
-- **B2:** DONE (code + proof). Decisions settled: Resend email KEPT as a notification
-  alongside the store write; tenant hardcoded to `'pgt'` at the seam. `DATABASE_URL`
-  (Neon, new database, same account, pooled string) + one `python -m scripts.init_db`
-  run in prod remain FOUNDER-HANDS owed — until then chat handoffs no-op safely in prod
-  and the contact email still delivers (no lead lost). Guided setup available.
+- **B2:** DONE (code + proof + Neon provisioned). Decisions settled: Resend email KEPT
+  as a notification alongside the store write; tenant hardcoded to `'pgt'` at the seam.
+  Neon project `pgt-engine` created, pooled `DATABASE_URL` in local `.env`, `init_db`
+  run (schema + RLS + PGT tenant zero seeded). ⚠ Found `neondb_owner` has BYPASSRLS →
+  ported **F6 defense-in-depth** (explicit `tenant_id` filters + RLS), proven on real
+  Neon. **Still owed (founder):** set the same `DATABASE_URL` in the **Render**
+  dashboard so the live site persists leads.
+- **F6 binds B4:** the admin view's reads MUST filter `WHERE tenant_id = ...` in SQL —
+  RLS is bypassed by Neon's role, so a read that trusts RLS alone leaks.
 - **B3:** `ADMIN_SESSION_SECRET`; how PGT's first admin password is set.
 - **B4:** admin UI location (recommend `/admin`).
 - **B5:** PGT's real availability model (enters as data via admin, not code).

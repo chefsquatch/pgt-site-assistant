@@ -52,9 +52,16 @@ def with_tenant(
     connection. Inside `fn`, every query against a tenant-scoped table is filtered by
     the RLS policy to this tenant's rows — the DB enforces it, not us.
 
-    This is the single doorway through which tenant-scoped data is touched. If a query
-    does not run inside a with_tenant txn, app.tenant_id is unset, the policy predicate
-    is NULL, and it admits ZERO rows. Safe by default.
+    This is the single doorway through which tenant-scoped data is touched. When RLS is
+    enforced, a query outside a with_tenant txn has app.tenant_id unset, the predicate is
+    NULL, and it admits ZERO rows — safe by default.
+
+    ⚠ DEFENSE ONE ONLY. RLS is bypassed entirely by a role with BYPASSRLS, which is
+    exactly what Neon's default `neondb_owner` has. So with_tenant's DB-enforced scoping
+    is NOT sufficient on Neon on its own: every scoped query must ALSO carry an explicit
+    tenant_id filter/tag in SQL (defense two — freeze F6). create_lead tags the row it
+    inserts; scoped reads (Brick 4+) MUST filter `WHERE tenant_id = ...`. Belt and
+    suspenders: keep with_tenant AND filter, so isolation holds whether or not RLS runs.
     """
     with conn.transaction():
         # Bind as a parameter so the id can never be interpolated into SQL text.

@@ -32,6 +32,7 @@ BRICK: ..........................  TREE: ........................
 
 2 · STANDING FREEZES, NAMED, WITH LIVE STATUS
     F1 wall ...  F2 determinism ...  F3 cost ...  F4 expand ...  F5 landed/slated ...
+    F6 defense-in-depth ...
     engaged by this brick: .........................................
 
 3 · REPOSITORY STATE, READ LIVE
@@ -75,6 +76,14 @@ STOPPED FOR GO.
   conversational front is expanded, not rewritten or split into a second stack.
 - **F5 — LANDED vs SLATED is load-bearing.** Never mark work done that is not wired
   and proven. A ledger entry marked done with wiring deferred is a lie in the record.
+- **F6 — DEFENSE IN DEPTH (isolation must not depend on RLS alone).** ⚠ Neon's default
+  role (`neondb_owner`) has **BYPASSRLS** (verified live 2026-09-28), so RLS is skipped
+  entirely in production — even with FORCE. Therefore every tenant-scoped query MUST
+  ALSO carry an explicit `tenant_id` filter/tag in SQL: writes tag `tenant_id`
+  explicitly; reads filter `WHERE tenant_id = ...`. RLS (F1) is defense one; the explicit
+  filter is defense two; they ship together. A scoped read that trusts RLS alone has not
+  landed. Proof: a test that DISABLES RLS (the real prod condition) and asserts isolation
+  still holds. (Same conclusion Tinker reached 2026-09-25; ported here 2026-09-28.)
 
 ---
 
