@@ -78,14 +78,20 @@ one session — context barely used, so the one-brick rhythm's purpose held).
 - Did not seed the REAL PGT admin (founder's email + password to choose — owed).
 - Did not run the app server (endpoints proven via TestClient).
 
-### Owed (owner: founder) — to make admin login live
+### DEPLOYED + PROVEN LIVE (2026-09-28) — all B3 owed items DONE
 
-- **`ADMIN_SESSION_SECRET`** — set in Render (generate: `python -c "import secrets;
-  print(secrets.token_urlsafe(48))"`). Until set, prod admin login fails closed.
-- **Seed the real admin** — `ADMIN_EMAIL` + `ADMIN_INITIAL_PASSWORD` then
-  `python -m scripts.seed_admin` against Neon (founder chooses the credentials).
-- **Neon migration** — re-run `python -m scripts.init_db` against prod to create the new
-  `admin` table + its RLS (idempotent, additive — leaves tenant/lead untouched).
+- **`ADMIN_SESSION_SECRET`** — generated + set in the Render dashboard; redeployed.
+- **Neon migration** — `scripts.init_db` re-run on prod → `admin` table + RLS policy
+  created (additive; tenant/lead untouched).
+- **Real admin seeded** — `scripts.seed_admin` run against Neon: PGT admin
+  `lesfleming@precisionguessworktech.com` (1 row); stored hash verifies the password and
+  rejects a wrong one.
+- **Live end-to-end proof** on `https://pgt-site-assistant.onrender.com`: `/admin/login`
+  → 200 + `pgt_admin` cookie; `/admin/me` → 200 `{email, tenant:'pgt'}`; wrong password →
+  401; `/admin/logout` → 200 → `/admin/me` → 401. The full prod auth path (secret +
+  seeded admin + walled table) works.
+- Founder may reset the password anytime by re-running `scripts.seed_admin` (idempotent
+  upsert). Rotating `ADMIN_SESSION_SECRET` logs the session out but keeps the password.
 
 ---
 

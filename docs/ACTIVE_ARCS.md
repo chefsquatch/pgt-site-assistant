@@ -42,11 +42,10 @@ brick-one red-control proven on a **Neon test branch**.
   dashboard so the live site persists leads.
 - **F6 binds B4:** the admin view's reads MUST filter `WHERE tenant_id = ...` in SQL —
   RLS is bypassed by Neon's role, so a read that trusts RLS alone leaks.
-- **B3:** DONE (code + proof). Owed to make admin login LIVE: (1) `ADMIN_SESSION_SECRET`
-  set in Render (fail-closed until set); (2) seed the real admin —
-  `ADMIN_EMAIL`+`ADMIN_INITIAL_PASSWORD` then `python -m scripts.seed_admin` against Neon
-  (founder chooses creds); (3) re-run `python -m scripts.init_db` on Neon to add the
-  `admin` table (idempotent/additive). Cookie `pgt_admin`, 12h TTL.
+- **B3:** DONE + DEPLOYED + PROVEN LIVE. `ADMIN_SESSION_SECRET` set in Render; Neon
+  migrated (`admin` table); PGT admin `lesfleming@precisionguessworktech.com` seeded.
+  Live login/me/logout verified on the deployed site. Founder resets the password via
+  `scripts.seed_admin` (idempotent). Cookie `pgt_admin`, 12h TTL.
 - **B4:** admin UI location (recommend `/admin`).
 - **B5:** PGT's real availability model (enters as data via admin, not code).
 - **B7:** `RESEND_API_KEY` + verified sender domain (already owed).
