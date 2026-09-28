@@ -22,7 +22,7 @@ brick-one red-control proven on a **Neon test branch**.
 |---|---|---|---|
 | 1 | Tenant-scoped store + RLS wall (PGT tenant zero) | — | **LANDED 2026-09-27** (wall proven: 7 passed + red control + mutation-red) |
 | 2 | Lead capture → store (assistant writes leads through `with_tenant`) | 1 | **LANDED 2026-09-28** (15 passed; /chat + /contact wired; commit-rollback bug found+fixed; ⚠ found Neon `neondb_owner` BYPASSRLS → ported Tinker's **F6 defense-in-depth**, proven on real Neon; Neon provisioned + tenant zero seeded) |
-| 3 | Admin auth (scrypt password + HMAC signed HttpOnly cookie) | 1 | SLATED |
+| 3 | Admin auth (scrypt password + HMAC signed HttpOnly cookie) | 1 | **LANDED 2026-09-28** (35 passed; scrypt+HMAC ported from Tinker, stdlib-only; `admin` scoped table + red control + F6; login/logout/me proven via TestClient; owed: `ADMIN_SESSION_SECRET`, seed real admin, Neon migrate) |
 | 4 | Admin view (see/organize leads, tenant-scoped) | 1,2,3 | SLATED |
 | 5 | Availability store (admin edits schedule/availability) | 1 | SLATED |
 | 6 | Assistant reads availability deterministically + books | 5 | SLATED |
@@ -42,7 +42,11 @@ brick-one red-control proven on a **Neon test branch**.
   dashboard so the live site persists leads.
 - **F6 binds B4:** the admin view's reads MUST filter `WHERE tenant_id = ...` in SQL —
   RLS is bypassed by Neon's role, so a read that trusts RLS alone leaks.
-- **B3:** `ADMIN_SESSION_SECRET`; how PGT's first admin password is set.
+- **B3:** DONE (code + proof). Owed to make admin login LIVE: (1) `ADMIN_SESSION_SECRET`
+  set in Render (fail-closed until set); (2) seed the real admin —
+  `ADMIN_EMAIL`+`ADMIN_INITIAL_PASSWORD` then `python -m scripts.seed_admin` against Neon
+  (founder chooses creds); (3) re-run `python -m scripts.init_db` on Neon to add the
+  `admin` table (idempotent/additive). Cookie `pgt_admin`, 12h TTL.
 - **B4:** admin UI location (recommend `/admin`).
 - **B5:** PGT's real availability model (enters as data via admin, not code).
 - **B7:** `RESEND_API_KEY` + verified sender domain (already owed).

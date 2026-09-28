@@ -21,11 +21,19 @@ import psycopg
 import pytest
 
 from app.db import with_tenant
-from app.db_schema import SCHEMA_SQL, rls_policy_statements
+from app.db_schema import SCHEMA_SQL, TENANT_SCOPED_TABLES, rls_policy_statements
 
 TEST_DSN = os.getenv("TEST_DATABASE_URL", "").strip()
 
 APP_ROLE = "pgt_app_test"
+
+
+def _drop_all(conn) -> None:
+    """Drop every scoped table (they FK to tenant) before tenant itself — order matters
+    now that more than one scoped table exists (lead, admin, ...)."""
+    for table in TENANT_SCOPED_TABLES:
+        conn.execute(f'DROP TABLE IF EXISTS "{table}" CASCADE;')
+    conn.execute("DROP TABLE IF EXISTS tenant CASCADE;")
 
 
 class Harness:
@@ -60,8 +68,7 @@ def tenants():
     conn.autocommit = True  # DDL/seed run outside the with_tenant txns
 
     # Clean slate each run so the tests are idempotent on a reused database.
-    conn.execute("DROP TABLE IF EXISTS lead;")
-    conn.execute("DROP TABLE IF EXISTS tenant;")
+    _drop_all(conn)
     conn.execute(SCHEMA_SQL)
     for stmt in rls_policy_statements():
         conn.execute(stmt)
@@ -97,8 +104,7 @@ def tenants():
 
     if switched:
         conn.execute("RESET ROLE;")
-    conn.execute("DROP TABLE IF EXISTS lead;")
-    conn.execute("DROP TABLE IF EXISTS tenant;")
+    _drop_all(conn)
     conn.close()
 
 

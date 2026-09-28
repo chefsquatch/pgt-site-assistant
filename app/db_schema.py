@@ -31,8 +31,9 @@ PGT_TENANT_NAME = "Precision Guesswork Technologies"
 
 # --- Tables that carry tenant_id and MUST be walled. A scoped table that is not listed
 # here gets no wall — so adding a scoped table without adding it here is the one silent
-# gap, and the wall test seeds/checks against this exact list.
-TENANT_SCOPED_TABLES = ["lead"]
+# gap, and the wall test seeds/checks against this exact list. `lead` (Brick 2),
+# `admin` (Brick 3). Each new scoped table also needs a red-control proof (F1).
+TENANT_SCOPED_TABLES = ["lead", "admin"]
 
 
 # gen_random_uuid() is built into Postgres core (>=13), so no extension is needed on
@@ -57,6 +58,22 @@ CREATE TABLE IF NOT EXISTS lead (
 );
 
 CREATE INDEX IF NOT EXISTS lead_tenant_idx ON lead (tenant_id);
+
+-- An admin (manager) of one tenant. TENANT-SCOPED (Brick 3). Ported from Tinker's
+-- `admin` table. password_hash is a REAL password credential: scrypt with a per-hash
+-- random salt (see app/auth.py), verified by re-derivation, never looked up by
+-- equality. email is stored NORMALIZED (trimmed + lowercased) and is unique WITHIN a
+-- tenant — two tenants may share an email string, but never within one.
+CREATE TABLE IF NOT EXISTS admin (
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id       uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    email           text NOT NULL,
+    password_hash   text NOT NULL,
+    created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS admin_tenant_idx ON admin (tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS admin_tenant_email_uq ON admin (tenant_id, email);
 """
 
 

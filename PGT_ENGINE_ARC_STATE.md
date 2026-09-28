@@ -6,6 +6,89 @@ load-bearing (F5).
 
 ---
 
+## BRICK 3 — Admin auth (scrypt password + HMAC signed HttpOnly cookie) — **LANDED 2026-09-28**
+
+**Session:** 2026-09-28 · Opus 4.8 · founder "keep going" after Brick 2 (second brick in
+one session — context barely used, so the one-brick rhythm's purpose held).
+
+### What was built (code COMPLETE + wired)
+
+- `app/auth.py` — faithful Python-stdlib port of Tinker's `password.ts` + `session.ts`
+  (NO new dependency):
+  - `hash_password` / `verify_password` — scrypt (`hashlib.scrypt`, N=16384/r=8/p=1),
+    self-describing `scrypt$N$r$p$salt$hash`, per-hash random salt, constant-time compare
+    (`hmac.compare_digest`); returns False (never raises) on a malformed stored value.
+  - `create_session_token` / `verify_session_token` — HMAC-SHA256 signed token
+    `payload.signature`, payload = base64url(JSON {tenant_id, admin_id, exp}); signature
+    checked in constant time BEFORE the payload is trusted; `exp` bounds lifetime.
+  - `resolve_session_secret` — dev default locally; on Render (prod) a missing
+    `ADMIN_SESSION_SECRET` RAISES (fail-closed, never signs with the public dev default).
+    Cookie `pgt_admin`, 12h TTL.
+- `app/db_schema.py` — new tenant-scoped `admin` table (id, tenant_id, email,
+  password_hash, created_at; unique(tenant_id, email)); added `"admin"` to
+  `TENANT_SCOPED_TABLES` so it inherits ENABLE+FORCE RLS from `rls_policy_statements()`.
+- `app/admins.py` — `find_admin_by_email` / `find_admin_by_id` / `upsert_admin`, all
+  through `with_tenant` AND filtering `tenant_id` in SQL (F6 defense-in-depth). Email
+  stored + matched NORMALIZED (trim + lowercase).
+- `app/main.py` — `POST /admin/login` (verify → set signed HttpOnly cookie),
+  `POST /admin/logout` (clear cookie), `GET /admin/me` behind a `require_admin`
+  dependency. Auth is FAIL-CLOSED (not best-effort like lead capture): store/secret
+  unavailable → 503, bad/expired/wrong-tenant cookie → 401. The **session-layer wall**
+  (`session.tenant_id == resolved tenant id`) lives in `require_admin` (port of Tinker's
+  session-guard). Login runs a constant dummy hash when the email is unknown → no
+  user-enumeration timing signal. Cookie `Secure` only on Render.
+- `scripts/seed_admin.py` — idempotent; seeds/resets PGT's admin from `ADMIN_EMAIL` +
+  `ADMIN_INITIAL_PASSWORD` env (scrypt-hashed before it touches the DB). Separate from
+  the request path, like `init_db`.
+- `.env.example` — documented `ADMIN_SESSION_SECRET` + the seed vars.
+
+### Proof — transcribed (local throwaway PG 16.4; role-switch → RLS enforced as on Neon)
+
+- **35 passed** (11 auth-primitive + 5 admin-wall + 5 admin-endpoint + Brick 1/2's 14).
+- **Watched go red — the password gate (Mutation A):** `verify_password` forced to
+  `return True` → wrong-password / malformed / tampered auth tests AND the endpoint
+  wrong-password 401 test FAILED. Restored → green.
+- **Watched go red — the admin F6 filter (Mutation B):** dropped the `tenant_id` filter
+  in `find_admin_by_email` → with RLS off, `find_admin_by_email(A, "mgr@b.test")`
+  returned **B's admin** (the leak). Restored → green.
+- **Admin table red control (F1):** `test_admin_wall` seeds admins in A and B, shows an
+  unscoped read sees 0 with RLS on, then DISABLES RLS → raw read leaks both, while the
+  filtered `find_admin_by_email` STILL isolates. (New scoped table ships with its proof.)
+- **Served behavior, not just mechanism:** TestClient flow — login sets the cookie,
+  `/admin/me` returns `{email, tenant:'pgt'}`, logout clears it → `/admin/me` 401 again;
+  wrong password + unknown email → 401; email match is case-insensitive.
+- **`seed_admin` end-to-end:** ran the script as the founder would → admin seeded; the
+  stored hash verifies the correct password and rejects a wrong one.
+
+### ⚠ Made load-bearing
+
+- **`admin` is now in `TENANT_SCOPED_TABLES`** — it gets the wall automatically; any
+  future scoped table must be added there AND ship a red-control proof (F1).
+- **The request-path/auth connection is `autocommit=True`** (same contract as the lead
+  seam) — `_open_store()` in main.py. A store seam that connects `autocommit=False` and
+  queries before `with_tenant` hits the savepoint/rollback trap (Brick 2 note).
+- **`ADMIN_SESSION_SECRET` fail-closed in prod** — admin login on Render is inert until
+  the secret is set. Rotating it logs admins out but never touches stored passwords.
+- **The session-layer wall lives in `require_admin`** — every future admin route depends
+  on it; a cookie minted for another tenant is inert here.
+
+### What I did NOT do (named)
+
+- Did not build the admin VIEW/UI (Brick 4) — only the auth mechanism + endpoints.
+- Did not seed the REAL PGT admin (founder's email + password to choose — owed).
+- Did not run the app server (endpoints proven via TestClient).
+
+### Owed (owner: founder) — to make admin login live
+
+- **`ADMIN_SESSION_SECRET`** — set in Render (generate: `python -c "import secrets;
+  print(secrets.token_urlsafe(48))"`). Until set, prod admin login fails closed.
+- **Seed the real admin** — `ADMIN_EMAIL` + `ADMIN_INITIAL_PASSWORD` then
+  `python -m scripts.seed_admin` against Neon (founder chooses the credentials).
+- **Neon migration** — re-run `python -m scripts.init_db` against prod to create the new
+  `admin` table + its RLS (idempotent, additive — leaves tenant/lead untouched).
+
+---
+
 ## BRICK 2 — Lead capture into the store (assistant writes leads through the wall) — **LANDED 2026-09-28**
 
 **Session:** 2026-09-28 · Opus 4.8 · founder GO on Brick 2 + both decisions

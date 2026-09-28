@@ -14,19 +14,31 @@ never a raw stack trace, never a silent hang, never a fabricated answer.
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+import os
+
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from . import config, corpus
+from . import config, corpus, db
+from .admins import find_admin_by_email, find_admin_by_id
 from .assistant import AssistantError, ConfigError, GenerationError, respond
+from .auth import (
+    ADMIN_COOKIE,
+    SESSION_TTL_MS,
+    create_session_token,
+    hash_password,
+    verify_password,
+    verify_session_token,
+)
 from .contact import (
     ContactConfigError,
     ContactDeliveryError,
     ContactRequest,
     send_lead,
 )
+from .db_schema import PGT_TENANT_SLUG
 from .leads import capture_lead
 
 app = FastAPI(title="PGT Site Assistant")
@@ -156,6 +168,114 @@ def contact(req: ContactRequest) -> JSONResponse:
         )
 
     return JSONResponse(content={"ok": True})
+
+
+# --- Admin auth (Brick 3) ------------------------------------------------------------
+# Single-tenant deploy: the admin is PGT's (tenant zero). Auth is NOT best-effort like
+# lead capture — it FAILS CLOSED: if the store is unreachable or the session secret is
+# missing in prod, login and the guard deny rather than admit.
+
+# Cookies get the Secure flag in production (Render serves HTTPS); off locally so dev
+# over http still works. Set once at import from Render's own env signal.
+_COOKIE_SECURE = bool(os.getenv("RENDER"))
+
+# A constant hash to verify against when no admin matches, so a wrong EMAIL and a wrong
+# PASSWORD take the same time — no user-enumeration timing signal.
+_DUMMY_PASSWORD_HASH = hash_password("timing-equalizer-not-a-real-account")
+
+
+class AdminLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+def _open_store() -> db.psycopg.Connection:
+    """Open an autocommit connection for an auth operation (same contract as the lead
+    seam: autocommit so each with_tenant is its own committed transaction)."""
+    conn = db.connect()
+    conn.autocommit = True
+    return conn
+
+
+def require_admin(request: Request) -> dict:
+    """FastAPI dependency: admit only a request carrying a valid session cookie for THIS
+    deploy's tenant (PGT). The session-layer wall — session.tenant_id == the resolved
+    tenant id — is enforced here (port of Tinker's session-guard). Raises 401 otherwise,
+    503 if the store/secret is unavailable."""
+    token = request.cookies.get(ADMIN_COOKIE)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not signed in.")
+    try:
+        session = verify_session_token(token)
+    except RuntimeError:  # ADMIN_SESSION_SECRET missing in prod — cannot verify
+        raise HTTPException(status_code=503, detail="Admin sessions are not configured.")
+    if session is None:
+        raise HTTPException(status_code=401, detail="Session invalid or expired.")
+
+    try:
+        conn = _open_store()
+    except Exception:
+        raise HTTPException(status_code=503, detail="The store is unavailable.")
+    try:
+        tenant = db.resolve_tenant(conn, PGT_TENANT_SLUG)
+        # The session-layer wall: a cookie minted for another tenant is inert here.
+        if tenant is None or session.tenant_id != str(tenant["id"]):
+            raise HTTPException(status_code=401, detail="Session invalid for this workspace.")
+        admin = find_admin_by_id(conn, tenant["id"], session.admin_id)
+        if admin is None:
+            raise HTTPException(status_code=401, detail="Admin no longer exists.")
+        return {"tenant": tenant, "admin": admin}
+    finally:
+        conn.close()
+
+
+@app.post("/admin/login")
+def admin_login(req: AdminLoginRequest) -> JSONResponse:
+    try:
+        conn = _open_store()
+    except Exception:
+        return JSONResponse(status_code=503, content={"ok": False, "error": "The store is unavailable."})
+    try:
+        tenant = db.resolve_tenant(conn, PGT_TENANT_SLUG)
+        if tenant is None:
+            return JSONResponse(status_code=503, content={"ok": False, "error": "No workspace configured."})
+        account = find_admin_by_email(conn, tenant["id"], req.email)
+    finally:
+        conn.close()
+
+    # Always run a verification so a missing account costs the same time as a wrong password.
+    stored = account["password_hash"] if account else _DUMMY_PASSWORD_HASH
+    if not verify_password(req.password, stored) or account is None:
+        return JSONResponse(status_code=401, content={"ok": False, "error": "Invalid email or password."})
+
+    try:
+        token = create_session_token(str(tenant["id"]), account["id"])
+    except RuntimeError:  # ADMIN_SESSION_SECRET missing in prod
+        return JSONResponse(status_code=503, content={"ok": False, "error": "Admin sessions are not configured."})
+
+    resp = JSONResponse(content={"ok": True, "email": account["email"]})
+    resp.set_cookie(
+        ADMIN_COOKIE,
+        token,
+        max_age=SESSION_TTL_MS // 1000,
+        httponly=True,
+        secure=_COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+    )
+    return resp
+
+
+@app.post("/admin/logout")
+def admin_logout() -> JSONResponse:
+    resp = JSONResponse(content={"ok": True})
+    resp.delete_cookie(ADMIN_COOKIE, path="/")
+    return resp
+
+
+@app.get("/admin/me")
+def admin_me(ctx: dict = Depends(require_admin)) -> JSONResponse:
+    return JSONResponse(content={"email": ctx["admin"]["email"], "tenant": ctx["tenant"]["slug"]})
 
 
 @app.get("/")
