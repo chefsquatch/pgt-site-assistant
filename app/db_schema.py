@@ -21,6 +21,14 @@ from __future__ import annotations
 # mechanism is recognisably the same across the two repos.
 TENANT_SETTING = "app.tenant_id"
 
+# --- Tenant zero — PGT itself. The engine runs on PGT's own site first, so PGT is the
+# first tenant, seeded by scripts/init_db.py. It is the single source of truth for the
+# slug both the seed (init_db) and the runtime lead-capture seam (app/leads.py) use, so
+# the two can never drift. Later bricks replace the hardcoded resolution with real
+# per-slug resolution; this constant is where "which tenant is PGT" lives until then.
+PGT_TENANT_SLUG = "pgt"
+PGT_TENANT_NAME = "Precision Guesswork Technologies"
+
 # --- Tables that carry tenant_id and MUST be walled. A scoped table that is not listed
 # here gets no wall — so adding a scoped table without adding it here is the one silent
 # gap, and the wall test seeds/checks against this exact list.

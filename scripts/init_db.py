@@ -16,9 +16,10 @@ import sys
 from app import db, db_schema
 
 # PGT is tenant zero: the first tenant on the engine, and the one whose own site the
-# engine runs on before it is ever sold.
-PGT_SLUG = "pgt"
-PGT_NAME = "Precision Guesswork Technologies"
+# engine runs on before it is ever sold. The identity lives in db_schema so the seed
+# here and the runtime capture seam (app/leads.py) resolve the exact same slug.
+PGT_SLUG = db_schema.PGT_TENANT_SLUG
+PGT_NAME = db_schema.PGT_TENANT_NAME
 
 
 def init(conn) -> None:

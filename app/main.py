@@ -27,6 +27,7 @@ from .contact import (
     ContactRequest,
     send_lead,
 )
+from .leads import capture_lead
 
 app = FastAPI(title="PGT Site Assistant")
 
@@ -99,6 +100,12 @@ def chat(req: ChatRequest) -> JSONResponse:
     except AssistantError as exc:  # empty message, etc.
         return JSONResponse(status_code=400, content=_email_fallback(str(exc)))
 
+    # System of record: when the assistant has qualified a visitor and summarized their
+    # problem, persist it as a lead (source='assistant'). Best-effort — capture_lead
+    # never raises, so a store hiccup can't break the reply the visitor is waiting on.
+    if result.handoff_ready and result.problem_summary:
+        capture_lead(problem_summary=result.problem_summary, source="assistant")
+
     return JSONResponse(
         content={
             "reply": result.reply,
@@ -120,6 +127,17 @@ def contact(req: ContactRequest) -> JSONResponse:
     # success shape) and send nothing, so the bot gets no signal it was caught.
     if req.is_bot():
         return JSONResponse(content={"ok": True})
+
+    # System of record first: persist the lead through the tenant wall (source='contact').
+    # Best-effort — if the store is unset/unreachable, capture_lead logs and returns None,
+    # and the email below still delivers, so no lead is lost during the transition off the
+    # email-only stopgap. The email stays as the founder's notification (store = truth).
+    capture_lead(
+        problem_summary=req.message,
+        name=req.name,
+        email=str(req.email),
+        source="contact",
+    )
 
     try:
         send_lead(req)

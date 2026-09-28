@@ -21,7 +21,7 @@ brick-one red-control proven on a **Neon test branch**.
 | # | Brick | Depends on | Status |
 |---|---|---|---|
 | 1 | Tenant-scoped store + RLS wall (PGT tenant zero) | — | **LANDED 2026-09-27** (wall proven: 7 passed + red control + mutation-red) |
-| 2 | Lead capture → store (assistant writes leads through `with_tenant`) | 1 | SLATED |
+| 2 | Lead capture → store (assistant writes leads through `with_tenant`) | 1 | **LANDED 2026-09-28** (13 passed; /chat + /contact wired; commit-rollback bug found+fixed; owed: prod `DATABASE_URL` + `init_db`) |
 | 3 | Admin auth (scrypt password + HMAC signed HttpOnly cookie) | 1 | SLATED |
 | 4 | Admin view (see/organize leads, tenant-scoped) | 1,2,3 | SLATED |
 | 5 | Availability store (admin edits schedule/availability) | 1 | SLATED |
@@ -32,9 +32,12 @@ brick-one red-control proven on a **Neon test branch**.
 
 ## Owed from the founder (by brick)
 
-- **B1:** DONE (wall proven on local PG). `DATABASE_URL` (Neon, new database, same
-  account) now rolls forward to B2 as the deploy secret — guided setup when B2 needs it.
-- **B2:** keep Resend email as a notification alongside the store? (recommend yes).
+- **B1:** DONE (wall proven on local PG).
+- **B2:** DONE (code + proof). Decisions settled: Resend email KEPT as a notification
+  alongside the store write; tenant hardcoded to `'pgt'` at the seam. `DATABASE_URL`
+  (Neon, new database, same account, pooled string) + one `python -m scripts.init_db`
+  run in prod remain FOUNDER-HANDS owed — until then chat handoffs no-op safely in prod
+  and the contact email still delivers (no lead lost). Guided setup available.
 - **B3:** `ADMIN_SESSION_SECRET`; how PGT's first admin password is set.
 - **B4:** admin UI location (recommend `/admin`).
 - **B5:** PGT's real availability model (enters as data via admin, not code).
