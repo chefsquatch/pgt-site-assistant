@@ -63,6 +63,38 @@ def create_lead(
     return db.with_tenant(conn, tenant_id, _insert)
 
 
+def list_leads(conn: db.psycopg.Connection, tenant_id: Any) -> list[dict]:
+    """Read a tenant's captured leads, newest first — the read-side counterpart to
+    create_lead, for the admin view (Brick 4).
+
+    Defense in depth (F6): runs inside with_tenant (defense one) AND filters
+    `tenant_id` in SQL (defense two), so it returns only this tenant's leads even where
+    the connecting role bypasses RLS (Neon's neondb_owner does). Never returns another
+    tenant's rows.
+    """
+
+    def _select(c: db.psycopg.Connection):
+        return c.execute(
+            "SELECT id, name, email, problem_summary, source, status, created_at "
+            "FROM lead WHERE tenant_id = %s ORDER BY created_at DESC",
+            (tenant_id,),
+        ).fetchall()
+
+    rows = db.with_tenant(conn, tenant_id, _select)
+    return [
+        {
+            "id": str(r[0]),
+            "name": r[1],
+            "email": r[2],
+            "problem_summary": r[3],
+            "source": r[4],
+            "status": r[5],
+            "created_at": r[6].isoformat() if r[6] is not None else None,
+        }
+        for r in rows
+    ]
+
+
 def capture_lead(
     *,
     problem_summary: str | None,

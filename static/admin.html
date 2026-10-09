@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0e0e10">
+<title>PGT Engine — Admin</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#141417;--bg-deep:#0e0e10;--panel:#1f1f24;--line:#34343c;--red:#d4302f;--red-hot:#ff4b3e;--amber:#e0a020;--green:#4ec07a;--text:#e6e6e6;--muted:#9a9aa2}
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1100px 600px at 78% -8%,rgba(212,48,47,.14),transparent 60%),var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+  .wrap{max-width:980px;margin:0 auto;padding:56px 24px 120px}
+  .kicker{font-size:12px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--amber)}
+  h1{font-family:Oswald,sans-serif;text-transform:uppercase;font-weight:700;font-size:clamp(28px,5vw,44px);line-height:1.05;margin:12px 0 0}
+  .topbar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .who{font-size:14px;color:var(--muted)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px 24px;margin-top:28px}
+  label{display:block;font-size:13px;color:var(--muted);margin:0 0 6px}
+  input{width:100%;background:var(--bg-deep);border:1px solid var(--line);border-radius:8px;padding:11px 12px;color:var(--text);font-size:15px}
+  input:focus{outline:none;border-color:var(--red-hot)}
+  .field{margin-bottom:14px}
+  button{font-family:Oswald,sans-serif;text-transform:uppercase;letter-spacing:.04em;font-weight:600;font-size:14px;background:var(--red);color:#fff;border:0;border-radius:8px;padding:11px 20px;cursor:pointer}
+  button:hover{background:var(--red-hot)}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--muted)}
+  button.ghost:hover{border-color:var(--red-hot);color:var(--text)}
+  .err{color:var(--red-hot);font-size:14px;margin-top:10px;min-height:18px}
+  table{width:100%;border-collapse:collapse;margin-top:4px;font-size:14px}
+  th{font-family:Oswald,sans-serif;text-transform:uppercase;font-size:12px;letter-spacing:.06em;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+  td{padding:12px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--text)}
+  tr:last-child td{border-bottom:0}
+  .tag{display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .tag.assistant{color:var(--amber);border-color:rgba(224,160,32,.4)}
+  .tag.contact{color:var(--green);border-color:rgba(78,192,122,.4)}
+  .muted{color:var(--muted)}
+  .count{font-size:13px;color:var(--muted);margin:0 0 14px}
+  .empty{color:var(--muted);padding:26px 0;text-align:center}
+  .hide{display:none}
+  .when{white-space:nowrap;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="topbar">
+      <div>
+        <div class="kicker">— PGT Engine · Admin —</div>
+        <h1>Captured leads</h1>
+      </div>
+      <div id="session" class="who hide">
+        <span id="who-email"></span>
+        <button id="logout" class="ghost" style="margin-left:12px">Sign out</button>
+      </div>
+    </div>
+
+    <!-- Sign in -->
+    <section id="login" class="card hide" style="max-width:420px">
+      <form id="login-form">
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button type="submit" id="login-btn">Sign in</button>
+        <div class="err" id="login-err"></div>
+      </form>
+    </section>
+
+    <!-- Leads -->
+    <section id="leads" class="card hide">
+      <p class="count" id="count"></p>
+      <div id="leads-body"></div>
+    </section>
+  </main>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+  function show(el){ el.classList.remove("hide"); }
+  function hide(el){ el.classList.add("hide"); }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];}); }
+
+  function fmtWhen(iso){
+    if(!iso) return "";
+    try{ var d=new Date(iso); return d.toLocaleString(); }catch(e){ return iso; }
+  }
+
+  function renderLeads(data){
+    var leads = (data && data.leads) || [];
+    $("count").textContent = leads.length === 1 ? "1 lead" : (leads.length + " leads");
+    if(!leads.length){
+      $("leads-body").innerHTML = '<div class="empty">No leads captured yet.</div>';
+      return;
+    }
+    var rows = leads.map(function(l){
+      var tag = l.source === "contact" ? "contact" : "assistant";
+      return '<tr>'
+        + '<td>'+(l.name ? esc(l.name) : '<span class="muted">—</span>')+'</td>'
+        + '<td>'+(l.email ? esc(l.email) : '<span class="muted">—</span>')+'</td>'
+        + '<td>'+esc(l.problem_summary || '')+'</td>'
+        + '<td><span class="tag '+tag+'">'+esc(l.source)+'</span></td>'
+        + '<td>'+esc(l.status)+'</td>'
+        + '<td class="when">'+esc(fmtWhen(l.created_at))+'</td>'
+        + '</tr>';
+    }).join("");
+    $("leads-body").innerHTML =
+      '<table><thead><tr><th>Name</th><th>Email</th><th>Problem</th><th>Source</th><th>Status</th><th>When</th></tr></thead>'
+      + '<tbody>'+rows+'</tbody></table>';
+  }
+
+  function loadLeads(){
+    fetch("/admin/leads", {credentials:"same-origin"})
+      .then(function(r){ if(!r.ok) throw new Error("unauthorized"); return r.json(); })
+      .then(function(data){ hide($("login")); show($("leads")); renderLeads(data); })
+      .catch(function(){ showLogin(); });
+  }
+
+  function showSignedIn(email){
+    $("who-email").textContent = "Signed in as " + email;
+    show($("session"));
+  }
+
+  function showLogin(){
+    hide($("session")); hide($("leads")); show($("login"));
+    $("email").focus();
+  }
+
+  // On load: are we already signed in?
+  fetch("/admin/me", {credentials:"same-origin"})
+    .then(function(r){ if(!r.ok) throw new Error("not signed in"); return r.json(); })
+    .then(function(me){ showSignedIn(me.email); loadLeads(); })
+    .catch(function(){ showLogin(); });
+
+  $("login-form").addEventListener("submit", function(e){
+    e.preventDefault();
+    var btn = $("login-btn"); btn.disabled = true; $("login-err").textContent = "";
+    fetch("/admin/login", {
+      method:"POST", credentials:"same-origin",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ email: $("email").value, password: $("password").value })
+    })
+    .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
+    .then(function(res){
+      if(!res.ok || !res.j.ok){ $("login-err").textContent = (res.j && res.j.error) || "Sign-in failed."; return; }
+      $("password").value = "";
+      showSignedIn(res.j.email); loadLeads();
+    })
+    .catch(function(){ $("login-err").textContent = "Something went wrong. Try again."; })
+    .finally(function(){ btn.disabled = false; });
+  });
+
+  $("logout").addEventListener("click", function(){
+    fetch("/admin/logout", {method:"POST", credentials:"same-origin"})
+      .finally(function(){ showLogin(); });
+  });
+})();
+</script>
+</body>
+</html>

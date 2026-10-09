@@ -17,6 +17,7 @@ from app import config
 from app.admins import upsert_admin
 from app.auth import hash_password
 from app.db_schema import SCHEMA_SQL, rls_policy_statements
+from app.leads import create_lead
 
 TEST_DSN = os.getenv("TEST_DATABASE_URL", "").strip()
 
@@ -49,6 +50,13 @@ def client(monkeypatch):
         "INSERT INTO tenant (slug, name) VALUES ('pgt', 'PGT') RETURNING id;"
     ).fetchone()[0]
     upsert_admin(conn, pgt_id, email=ADMIN_EMAIL, password_hash=hash_password(ADMIN_PASSWORD))
+    # Seed a couple of leads for PGT + one for another tenant, to prove /admin/leads is scoped.
+    create_lead(conn, pgt_id, problem_summary="PGT lead one", source="assistant")
+    create_lead(conn, pgt_id, problem_summary="PGT lead two", name="Sam", email="sam@x.test", source="contact")
+    other_id = conn.execute(
+        "INSERT INTO tenant (slug, name) VALUES ('other', 'Other') RETURNING id;"
+    ).fetchone()[0]
+    create_lead(conn, other_id, problem_summary="OTHER tenant lead", source="assistant")
     conn.close()
 
     from fastapi.testclient import TestClient
@@ -100,3 +108,27 @@ def test_login_is_case_insensitive_on_email(client):
     r = client.post("/admin/login", json={"email": "  Admin@PGT.test ", "password": ADMIN_PASSWORD})
     assert r.status_code == 200
     assert r.json()["ok"] is True
+
+
+# --- Brick 4: the admin view ------------------------------------------------------
+
+def test_admin_leads_requires_auth(client):
+    assert client.get("/admin/leads").status_code == 401
+
+
+def test_admin_leads_returns_only_this_tenant(client):
+    client.post("/admin/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+    r = client.get("/admin/leads")
+    assert r.status_code == 200
+    data = r.json()
+    summaries = [l["problem_summary"] for l in data["leads"]]
+    assert data["count"] == 2
+    assert set(summaries) == {"PGT lead one", "PGT lead two"}
+    assert "OTHER tenant lead" not in summaries  # the other tenant's lead is never shown
+
+
+def test_admin_page_is_served(client):
+    r = client.get("/admin")
+    assert r.status_code == 200
+    assert "text/html" in r.headers.get("content-type", "")
+    assert "Captured leads" in r.text  # the page shell renders (data loads client-side)

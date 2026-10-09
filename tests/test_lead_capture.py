@@ -18,7 +18,7 @@ from __future__ import annotations
 import os
 
 from app.db import with_tenant
-from app.leads import capture_lead, create_lead
+from app.leads import capture_lead, create_lead, list_leads
 
 
 # --- the lead PERSISTS -----------------------------------------------------------
@@ -100,6 +100,40 @@ def test_capture_lead_persists_across_a_fresh_connection(tenants, monkeypatch):
     assert [str(r[0]) for r in rows] == [lead_id]
     assert rows[0][1] == "Front-door capture through the request path."
     assert rows[0][2] == "assistant"
+
+
+# --- the admin read rail (Brick 4): list_leads is tenant-scoped + ordered ---------
+
+def test_list_leads_returns_only_own_tenant_newest_first(tenants):
+    import time
+    create_lead(tenants.conn, tenants.A, problem_summary="A first", source="assistant")
+    time.sleep(0.01)
+    create_lead(tenants.conn, tenants.A, problem_summary="A second", source="contact")
+    create_lead(tenants.conn, tenants.B, problem_summary="B only", source="assistant")
+
+    a_leads = list_leads(tenants.conn, tenants.A)
+    assert [l["problem_summary"] for l in a_leads] == ["A second", "A first"]  # newest first
+    assert all(l["source"] in ("assistant", "contact") for l in a_leads)
+    # B's lead never appears in A's list.
+    assert "B only" not in [l["problem_summary"] for l in a_leads]
+
+    b_leads = list_leads(tenants.conn, tenants.B)
+    assert [l["problem_summary"] for l in b_leads] == ["B only"]
+
+
+def test_list_leads_empty_is_empty_list(tenants):
+    assert list_leads(tenants.conn, tenants.A) == []
+
+
+def test_list_leads_isolates_with_rls_off(tenants):
+    # Defense in depth (F6): even with RLS disabled, list_leads returns only A's rows.
+    create_lead(tenants.conn, tenants.A, problem_summary="A", source="assistant")
+    create_lead(tenants.conn, tenants.B, problem_summary="B", source="assistant")
+    tenants.as_owner('ALTER TABLE "lead" DISABLE ROW LEVEL SECURITY;')
+    a_leads = list_leads(tenants.conn, tenants.A)
+    assert [l["problem_summary"] for l in a_leads] == ["A"]  # not B's, despite RLS off
+    tenants.as_owner('ALTER TABLE "lead" ENABLE ROW LEVEL SECURITY;')
+    tenants.as_owner('ALTER TABLE "lead" FORCE ROW LEVEL SECURITY;')
 
 
 # --- the wall HOLDS for captured leads -------------------------------------------

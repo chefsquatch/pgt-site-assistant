@@ -39,7 +39,7 @@ from .contact import (
     send_lead,
 )
 from .db_schema import PGT_TENANT_SLUG
-from .leads import capture_lead
+from .leads import capture_lead, list_leads
 
 app = FastAPI(title="PGT Site Assistant")
 
@@ -276,6 +276,29 @@ def admin_logout() -> JSONResponse:
 @app.get("/admin/me")
 def admin_me(ctx: dict = Depends(require_admin)) -> JSONResponse:
     return JSONResponse(content={"email": ctx["admin"]["email"], "tenant": ctx["tenant"]["slug"]})
+
+
+@app.get("/admin/leads")
+def admin_leads(ctx: dict = Depends(require_admin)) -> JSONResponse:
+    """The signed-in tenant's captured leads (Brick 4). require_admin has already
+    enforced auth + the session-layer wall; list_leads filters tenant_id (F6)."""
+    try:
+        conn = _open_store()
+    except Exception:
+        raise HTTPException(status_code=503, detail="The store is unavailable.")
+    try:
+        leads = list_leads(conn, ctx["tenant"]["id"])
+    finally:
+        conn.close()
+    return JSONResponse(content={"leads": leads, "count": len(leads)})
+
+
+@app.get("/admin")
+def admin_page() -> FileResponse:
+    """The admin view. The page itself is public HTML/JS; it shows the sign-in form
+    until the browser holds a valid session cookie, then calls /admin/leads (which IS
+    guarded) to render the leads. No tenant data is embedded in the page."""
+    return FileResponse(str(config.STATIC_DIR / "admin.html"))
 
 
 @app.get("/")

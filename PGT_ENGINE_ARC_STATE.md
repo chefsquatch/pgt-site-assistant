@@ -6,6 +6,64 @@ load-bearing (F5).
 
 ---
 
+## BRICK 4 — Admin view (see captured leads, tenant-scoped) — **LANDED 2026-10-09**
+
+**Session:** 2026-10-09 · Opus 4.8 · founder queued "after that brick 4" (after the
+vertical-demos Render fix). No schema change — Brick 4 only READS the existing `lead` table.
+
+### What was built
+
+- `app/leads.py` → `list_leads(conn, tenant_id)` — the read-side counterpart to
+  `create_lead`: through `with_tenant` (defense one) AND `WHERE tenant_id = %s` (F6,
+  defense two), newest first. Returns dicts (created_at ISO-formatted).
+- `app/main.py` → `GET /admin/leads` (behind `require_admin`; opens an autocommit store
+  conn, calls `list_leads`, returns `{leads, count}`) + `GET /admin` (serves the admin
+  page; the page is public HTML, no tenant data embedded — the guarded `/admin/leads` is
+  what gates the data).
+- `static/admin.html` — self-contained page in the site's dark/Oswald brand: shows the
+  sign-in form until a valid session cookie exists, then calls `/admin/leads` and renders
+  the leads table (name / email / problem / source tag / status / when). Uses
+  `credentials:"same-origin"` so the HttpOnly cookie rides along; sign-out posts
+  `/admin/logout`.
+
+### Proof — transcribed (local throwaway PG 16.4, role-switch → RLS enforced as on Neon)
+
+- **41 passed** (6 new: 3 `list_leads` in test_lead_capture + 3 endpoint in
+  test_admin_endpoints; + Brick 1–3's 35).
+- **Watched go red (F6):** dropped the `tenant_id` filter in `list_leads` → with RLS off,
+  `list_leads(A)` returned `['B','A']` (both tenants) instead of `['A']` — the leak.
+  Restored → green. (The RLS-ON test stayed green under the mutation, proving it's the
+  defense-in-depth test that catches a missing filter — exactly the point of F6.)
+- **Endpoint scoping:** `/admin/leads` → 401 unauthed; authed returns ONLY the signed-in
+  tenant's 2 leads, never the seeded "OTHER tenant lead" (via TestClient).
+- **Served behavior (GREEN STANDARD — not just mechanism):** booted the app locally
+  against a seeded store, opened `/admin` in a browser, signed in, and saw the real leads
+  table render (3 leads, source tags, session persisting across reload). **Caught + fixed
+  a rendering bug in the browser:** the no-name cell showed the literal
+  `<span class="muted">—</span>` because `esc()` wrapped the HTML fallback; fixed to
+  `l.name ? esc(l.name) : '<span…>'` (same shape the email cell already used). Re-verified
+  the "—" renders correctly.
+
+### ⚠ Made load-bearing
+
+- `list_leads` is the sanctioned read rail — it filters `tenant_id` in SQL (F6). Any
+  future admin read of a scoped table must do the same, never trust RLS alone on Neon.
+- `/admin` serves PUBLIC HTML with NO tenant data embedded; `/admin/leads` is the guarded
+  data endpoint. Keep that split — don't server-render tenant rows into the page.
+
+### What I did NOT do (named)
+
+- No schema/Neon migration (Brick 4 reads only; `admin`+`lead` tables already on Neon).
+- No lead status EDITING / organizing beyond display (could be a later brick).
+- Availability/booking (B5–B6), human-fork (B7) — untouched.
+
+### Deploy
+
+- Code-only; pushed → Render auto-deploys. Admin login already live from Brick 3
+  (secret + seeded admin), so `/admin` is usable in prod immediately after deploy.
+
+---
+
 ## BRICK 3 — Admin auth (scrypt password + HMAC signed HttpOnly cookie) — **LANDED 2026-09-28**
 
 **Session:** 2026-09-28 · Opus 4.8 · founder "keep going" after Brick 2 (second brick in
