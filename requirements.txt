@@ -1,8 +1,8 @@
 # Pinned to the versions this assistant was built and proven against.
 anthropic==0.69.0
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-python-dotenv==1.0.1
+fastapi==0.161.1
+uvicorn[standard]==0.54.0
+python-dotenv==1.2.4
 # httpx: FastAPI TestClient AND the Resend delivery call for the contact form.
 httpx==0.28.1
 # EmailStr validation for the contact endpoint (server-side email-format gate).
@@ -11,3 +11,6 @@ email-validator==2.2.0
 # transactions, which the RLS wall requires (set_config LOCAL to a txn + scoped
 # queries in the same txn). The chat/contact paths do not import it yet.
 psycopg[binary]==3.3.6
+# certifi pinned so a rebuild drops CA roots distrusted in Oct 2026 (eMudhra), not just
+# whatever version pip happened to resolve at the last deploy.
+certifi==2026.10.23
