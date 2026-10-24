@@ -16,13 +16,20 @@ import pytest
 from app import config
 from app.admins import upsert_admin
 from app.auth import hash_password
-from app.db_schema import SCHEMA_SQL, rls_policy_statements
+from app.db_schema import SCHEMA_SQL, TENANT_SCOPED_TABLES, rls_policy_statements
 from app.leads import create_lead
 
 TEST_DSN = os.getenv("TEST_DATABASE_URL", "").strip()
 
 ADMIN_EMAIL = "admin@pgt.test"
 ADMIN_PASSWORD = "s3cret-password"
+
+
+def _drop_all(conn) -> None:
+    """Drop every scoped table before tenant (they FK to it) — same order as conftest."""
+    for table in TENANT_SCOPED_TABLES:
+        conn.execute(f'DROP TABLE IF EXISTS "{table}" CASCADE;')
+    conn.execute("DROP TABLE IF EXISTS tenant CASCADE;")
 
 
 @pytest.fixture()
@@ -40,9 +47,7 @@ def client(monkeypatch):
 
     conn = psycopg.connect(TEST_DSN)
     conn.autocommit = True
-    conn.execute("DROP TABLE IF EXISTS admin;")
-    conn.execute("DROP TABLE IF EXISTS lead;")
-    conn.execute("DROP TABLE IF EXISTS tenant;")
+    _drop_all(conn)
     conn.execute(SCHEMA_SQL)
     for stmt in rls_policy_statements():
         conn.execute(stmt)
@@ -67,9 +72,7 @@ def client(monkeypatch):
 
     conn = psycopg.connect(TEST_DSN)
     conn.autocommit = True
-    conn.execute("DROP TABLE IF EXISTS admin;")
-    conn.execute("DROP TABLE IF EXISTS lead;")
-    conn.execute("DROP TABLE IF EXISTS tenant;")
+    _drop_all(conn)
     conn.close()
 
 

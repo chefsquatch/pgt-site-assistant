@@ -40,6 +40,19 @@
   .empty{color:var(--muted);padding:26px 0;text-align:center}
   .hide{display:none}
   .when{white-space:nowrap;color:var(--muted);font-size:13px}
+  .tabs{display:flex;gap:8px;margin-top:24px}
+  .tabs button{background:transparent;border:1px solid var(--line);color:var(--muted)}
+  .tabs button.on{border-color:var(--red-hot);color:var(--text)}
+  h2{font-family:Oswald,sans-serif;text-transform:uppercase;font-size:18px;letter-spacing:.04em;margin:0 0 6px}
+  .hint{font-size:13px;color:var(--muted);margin:0 0 14px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .row .field{margin-bottom:0;flex:1 1 140px}
+  select{width:100%;background:var(--bg-deep);border:1px solid var(--line);border-radius:8px;padding:11px 12px;color:var(--text);font-size:15px}
+  button.small{padding:6px 12px;font-size:12px}
+  .open-list{list-style:none;margin:0;padding:0;font-size:14px}
+  .open-list li{padding:6px 0;border-bottom:1px solid var(--line)}
+  .open-list li:last-child{border-bottom:0}
+  @media (max-width:640px){ .wrap{padding:32px 16px 80px} table{font-size:13px} td,th{padding:8px} }
 </style>
 </head>
 <body>
@@ -47,7 +60,7 @@
     <div class="topbar">
       <div>
         <div class="kicker">— PGT Engine · Admin —</div>
-        <h1>Captured leads</h1>
+        <h1 id="page-title">Captured leads</h1>
       </div>
       <div id="session" class="who hide">
         <span id="who-email"></span>
@@ -71,11 +84,67 @@
       </form>
     </section>
 
+    <nav id="tabs" class="tabs hide">
+      <button type="button" id="tab-leads" class="on">Leads</button>
+      <button type="button" id="tab-avail">Availability</button>
+    </nav>
+
     <!-- Leads -->
     <section id="leads" class="card hide">
       <p class="count" id="count"></p>
       <div id="leads-body"></div>
     </section>
+
+    <!-- Availability (Brick 5): the schedule the assistant will read. Data, not prose. -->
+    <div id="avail" class="hide">
+      <section class="card">
+        <h2>Time zone</h2>
+        <p class="hint">Your hours and blocked times are read in this zone.</p>
+        <form id="tz-form" class="row">
+          <div class="field"><label for="tz">IANA time zone</label><input id="tz" list="tz-list" required></div>
+          <button type="submit">Save</button>
+        </form>
+        <datalist id="tz-list">
+          <option value="America/Detroit"><option value="America/New_York"><option value="America/Chicago">
+          <option value="America/Denver"><option value="America/Phoenix"><option value="America/Los_Angeles">
+        </datalist>
+        <div class="err" id="tz-err"></div>
+      </section>
+
+      <section class="card">
+        <h2>Weekly hours</h2>
+        <p class="hint">When you are available each week. Add more than one window to a day for split hours.</p>
+        <div id="win-body"></div>
+        <form id="win-form" class="row" style="margin-top:16px">
+          <div class="field"><label for="win-day">Day</label>
+            <select id="win-day"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option></select></div>
+          <div class="field"><label for="win-start">From</label><input id="win-start" type="time" value="09:00" required></div>
+          <div class="field"><label for="win-end">To</label><input id="win-end" type="time" value="17:00" required></div>
+          <div class="field"><label for="win-label">Label (optional)</label><input id="win-label" maxlength="60"></div>
+          <button type="submit">Add hours</button>
+        </form>
+        <div class="err" id="win-err"></div>
+      </section>
+
+      <section class="card">
+        <h2>Blocked time</h2>
+        <p class="hint">Days off or appointments. Blocked time is never offered.</p>
+        <div id="blk-body"></div>
+        <form id="blk-form" class="row" style="margin-top:16px">
+          <div class="field"><label for="blk-start">From</label><input id="blk-start" type="datetime-local" required></div>
+          <div class="field"><label for="blk-end">To</label><input id="blk-end" type="datetime-local" required></div>
+          <div class="field"><label for="blk-reason">Reason (optional)</label><input id="blk-reason" maxlength="80"></div>
+          <button type="submit">Block time</button>
+        </form>
+        <div class="err" id="blk-err"></div>
+      </section>
+
+      <section class="card">
+        <h2>Open in the next 14 days</h2>
+        <p class="hint">Weekly hours minus blocked time. This is exactly what the assistant will be able to offer.</p>
+        <ul class="open-list" id="open-body"></ul>
+      </section>
+    </div>
   </main>
 
 <script>
@@ -117,9 +186,106 @@
   function loadLeads(){
     fetch("/admin/leads", {credentials:"same-origin"})
       .then(function(r){ if(!r.ok) throw new Error("unauthorized"); return r.json(); })
-      .then(function(data){ hide($("login")); show($("leads")); renderLeads(data); })
+      .then(function(data){ hide($("login")); show($("tabs")); selectTab("leads"); renderLeads(data); })
       .catch(function(){ showLogin(); });
   }
+
+  // --- tabs ----------------------------------------------------------------------
+  function selectTab(name){
+    var leads = name === "leads";
+    $("tab-leads").classList.toggle("on", leads);
+    $("tab-avail").classList.toggle("on", !leads);
+    $("page-title").textContent = leads ? "Captured leads" : "Availability";
+    if(leads){ show($("leads")); hide($("avail")); }
+    else { hide($("leads")); show($("avail")); loadAvailability(); }
+  }
+  $("tab-leads").addEventListener("click", function(){ selectTab("leads"); });
+  $("tab-avail").addEventListener("click", function(){ selectTab("avail"); });
+
+  // --- availability (Brick 5) ------------------------------------------------------
+  var DAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
+  function api(method, url, body){
+    var opts = {method:method, credentials:"same-origin", headers:{}};
+    if(body !== undefined){ opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+    return fetch(url, opts).then(function(r){
+      return r.json().catch(function(){ return {}; }).then(function(j){
+        if(r.status === 401){ showLogin(); throw new Error("Signed out."); }
+        if(!r.ok) throw new Error(j.detail || "Something went wrong.");
+        return j;
+      });
+    });
+  }
+
+  // The server renders times in the business's zone; show that wall time as-is.
+  function fmtLocal(iso){ return iso ? iso.slice(0,16).replace("T"," ") : ""; }
+
+  function fmtOpen(w){
+    var d = new Date(w.start.slice(0,10) + "T12:00:00");
+    return DAYS[d.getDay()] + " " + w.start.slice(5,10) + ", " + w.start.slice(11,16) + " to " + w.end.slice(11,16);
+  }
+
+  function renderAvailability(v){
+    $("tz").value = v.timezone;
+    var wins = v.windows || [];
+    $("win-body").innerHTML = wins.length
+      ? '<table><thead><tr><th>Day</th><th>Hours</th><th>Label</th><th></th></tr></thead><tbody>'
+        + wins.map(function(w){
+            return '<tr><td>'+esc(DAYS[w.weekday])+'</td><td>'+esc(w.start)+' to '+esc(w.end)+'</td>'
+              + '<td>'+(w.label ? esc(w.label) : '<span class="muted">—</span>')+'</td>'
+              + '<td><button class="ghost small" data-del-win="'+esc(w.id)+'">Remove</button></td></tr>';
+          }).join("") + '</tbody></table>'
+      : '<div class="empty">No weekly hours yet. Until you add some, nothing is open.</div>';
+    var blks = v.blocks || [];
+    $("blk-body").innerHTML = blks.length
+      ? '<table><thead><tr><th>From</th><th>To</th><th>Reason</th><th>Source</th><th></th></tr></thead><tbody>'
+        + blks.map(function(b){
+            return '<tr><td class="when">'+esc(fmtLocal(b.starts_at))+'</td><td class="when">'+esc(fmtLocal(b.ends_at))+'</td>'
+              + '<td>'+(b.reason ? esc(b.reason) : '<span class="muted">—</span>')+'</td>'
+              + '<td><span class="tag">'+esc(b.source)+'</span></td>'
+              + '<td><button class="ghost small" data-del-blk="'+esc(b.id)+'">Remove</button></td></tr>';
+          }).join("") + '</tbody></table>'
+      : '<div class="empty">No blocked time.</div>';
+  }
+
+  function renderOpen(data){
+    var open = (data && data.open) || [];
+    $("open-body").innerHTML = open.length
+      ? open.map(function(w){ return '<li>'+esc(fmtOpen(w))+'</li>'; }).join("")
+      : '<li class="muted">Nothing open in the next 14 days.</li>';
+  }
+
+  function loadAvailability(){
+    api("GET", "/admin/availability").then(renderAvailability).catch(function(e){ $("win-err").textContent = e.message; });
+    api("GET", "/admin/availability/open?days=14").then(renderOpen).catch(function(){});
+  }
+
+  function submitter(formId, errId, send){
+    $(formId).addEventListener("submit", function(e){
+      e.preventDefault(); $(errId).textContent = "";
+      send().then(loadAvailability).catch(function(err){ $(errId).textContent = err.message; });
+    });
+  }
+  submitter("tz-form", "tz-err", function(){ return api("PUT", "/admin/availability/timezone", {timezone: $("tz").value}); });
+  submitter("win-form", "win-err", function(){
+    return api("POST", "/admin/availability/windows", {
+      weekday: parseInt($("win-day").value, 10), start: $("win-start").value, end: $("win-end").value,
+      label: $("win-label").value || null
+    }).then(function(){ $("win-label").value = ""; });
+  });
+  submitter("blk-form", "blk-err", function(){
+    return api("POST", "/admin/availability/blocks", {
+      starts_at: $("blk-start").value, ends_at: $("blk-end").value, reason: $("blk-reason").value || null
+    }).then(function(){ $("blk-reason").value = ""; });
+  });
+
+  $("avail").addEventListener("click", function(e){
+    var w = e.target.getAttribute("data-del-win"), b = e.target.getAttribute("data-del-blk");
+    if(!w && !b) return;
+    api("DELETE", w ? "/admin/availability/windows/"+encodeURIComponent(w) : "/admin/availability/blocks/"+encodeURIComponent(b))
+      .then(loadAvailability)
+      .catch(function(err){ $(w ? "win-err" : "blk-err").textContent = err.message; });
+  });
 
   function showSignedIn(email){
     $("who-email").textContent = "Signed in as " + email;
@@ -127,7 +293,7 @@
   }
 
   function showLogin(){
-    hide($("session")); hide($("leads")); show($("login"));
+    hide($("session")); hide($("leads")); hide($("avail")); hide($("tabs")); show($("login"));
     $("email").focus();
   }
 

@@ -14,3 +14,6 @@ psycopg[binary]==3.3.6
 # certifi pinned so a rebuild drops CA roots distrusted in Oct 2026 (eMudhra), not just
 # whatever version pip happened to resolve at the last deploy.
 certifi==2026.10.23
+# IANA timezone data for zoneinfo (availability, Brick 5). Pinned so the tenant's zone
+# resolves the same everywhere — Windows has no system tz database, slim images may not.
+tzdata==2026.5

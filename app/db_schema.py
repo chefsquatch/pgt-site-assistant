@@ -32,8 +32,15 @@ PGT_TENANT_NAME = "Precision Guesswork Technologies"
 # --- Tables that carry tenant_id and MUST be walled. A scoped table that is not listed
 # here gets no wall — so adding a scoped table without adding it here is the one silent
 # gap, and the wall test seeds/checks against this exact list. `lead` (Brick 2),
-# `admin` (Brick 3). Each new scoped table also needs a red-control proof (F1).
-TENANT_SCOPED_TABLES = ["lead", "admin"]
+# `admin` (Brick 3), the three `availability_*` tables (Brick 5). Each new scoped table
+# also needs a red-control proof (F1).
+TENANT_SCOPED_TABLES = [
+    "lead",
+    "admin",
+    "availability_settings",
+    "availability_window",
+    "availability_block",
+]
 
 
 # gen_random_uuid() is built into Postgres core (>=13), so no extension is needed on
@@ -74,6 +81,44 @@ CREATE TABLE IF NOT EXISTS admin (
 
 CREATE INDEX IF NOT EXISTS admin_tenant_idx ON admin (tenant_id);
 CREATE UNIQUE INDEX IF NOT EXISTS admin_tenant_email_uq ON admin (tenant_id, email);
+
+-- Availability (Brick 5) — see app/availability.py. All three are TENANT-SCOPED.
+-- One settings row per tenant: its IANA timezone (absent row = the default zone).
+CREATE TABLE IF NOT EXISTS availability_settings (
+    tenant_id   uuid PRIMARY KEY REFERENCES tenant(id) ON DELETE CASCADE,
+    timezone    text NOT NULL,
+    updated_at  timestamptz NOT NULL DEFAULT now()
+);
+
+-- Recurring weekly hours, wall-clock local to the tenant's timezone. weekday 0-6 with
+-- 0 = Sunday (Tinker's convention). A window never crosses midnight.
+CREATE TABLE IF NOT EXISTS availability_window (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id   uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    weekday     smallint NOT NULL CHECK (weekday BETWEEN 0 AND 6),
+    start_time  time NOT NULL,
+    end_time    time NOT NULL,
+    label       text,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    CHECK (end_time > start_time)
+);
+
+CREATE INDEX IF NOT EXISTS availability_window_tenant_idx ON availability_window (tenant_id);
+
+-- Time that is NOT available, as absolute instants. source = who wrote it: 'manual'
+-- (the admin) or 'calendar' (a future sync writing busy times into this same table).
+CREATE TABLE IF NOT EXISTS availability_block (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id   uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    starts_at   timestamptz NOT NULL,
+    ends_at     timestamptz NOT NULL,
+    reason      text,
+    source      text NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'calendar')),
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    CHECK (ends_at > starts_at)
+);
+
+CREATE INDEX IF NOT EXISTS availability_block_tenant_idx ON availability_block (tenant_id, starts_at);
 """
 
 

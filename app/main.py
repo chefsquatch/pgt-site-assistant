@@ -15,13 +15,14 @@ never a raw stack trace, never a silent hang, never a fabricated answer.
 from __future__ import annotations
 
 import os
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from . import config, corpus, db
+from . import availability, config, corpus, db
 from .admins import find_admin_by_email, find_admin_by_id
 from .assistant import AssistantError, ConfigError, GenerationError, respond, respond_tinker
 from .auth import (
@@ -326,6 +327,122 @@ def admin_leads(ctx: dict = Depends(require_admin)) -> JSONResponse:
     finally:
         conn.close()
     return JSONResponse(content={"leads": leads, "count": len(leads)})
+
+
+# --- Availability (Brick 5) — the admin edits the schedule; it lives as data (F2). ----
+# Every route is behind require_admin (auth + session-layer wall) and every store call
+# filters tenant_id in SQL (F6). Bad input -> 400 with the reason, never a stack trace.
+
+
+class TimezoneRequest(BaseModel):
+    timezone: str
+
+
+class WindowRequest(BaseModel):
+    weekday: int
+    start: str
+    end: str
+    label: str | None = None
+
+
+class BlockRequest(BaseModel):
+    starts_at: str  # "YYYY-MM-DDTHH:MM", wall time in the tenant's timezone
+    ends_at: str
+    reason: str | None = None
+
+
+def _with_store(fn):
+    """Open an autocommit store conn, run fn(conn), close. Maps bad input to 400 and an
+    unreachable store to 503."""
+    try:
+        conn = _open_store()
+    except Exception:
+        raise HTTPException(status_code=503, detail="The store is unavailable.")
+    try:
+        return fn(conn)
+    except availability.AvailabilityError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+
+def _availability_view(conn, tenant_id) -> dict:
+    tz = availability.get_timezone(conn, tenant_id)
+    blocks = availability.list_blocks(conn, tenant_id)
+    return {
+        "timezone": tz,
+        "windows": availability.list_windows(conn, tenant_id),
+        "blocks": [
+            # Rendered in the TENANT's zone (the DB hands back its own session zone).
+            {
+                **b,
+                "starts_at": b["starts_at"].astimezone(ZoneInfo(tz)).isoformat(),
+                "ends_at": b["ends_at"].astimezone(ZoneInfo(tz)).isoformat(),
+            }
+            for b in blocks
+        ],
+    }
+
+
+@app.get("/admin/availability")
+def admin_availability(ctx: dict = Depends(require_admin)) -> JSONResponse:
+    return JSONResponse(content=_with_store(lambda c: _availability_view(c, ctx["tenant"]["id"])))
+
+
+@app.put("/admin/availability/timezone")
+def admin_set_timezone(req: TimezoneRequest, ctx: dict = Depends(require_admin)) -> JSONResponse:
+    tz = _with_store(lambda c: availability.set_timezone(c, ctx["tenant"]["id"], req.timezone))
+    return JSONResponse(content={"ok": True, "timezone": tz})
+
+
+@app.post("/admin/availability/windows")
+def admin_add_window(req: WindowRequest, ctx: dict = Depends(require_admin)) -> JSONResponse:
+    wid = _with_store(
+        lambda c: availability.add_window(
+            c, ctx["tenant"]["id"], weekday=req.weekday, start=req.start, end=req.end, label=req.label
+        )
+    )
+    return JSONResponse(content={"ok": True, "id": wid})
+
+
+@app.delete("/admin/availability/windows/{window_id}")
+def admin_delete_window(window_id: str, ctx: dict = Depends(require_admin)) -> JSONResponse:
+    if not _with_store(lambda c: availability.delete_window(c, ctx["tenant"]["id"], window_id)):
+        raise HTTPException(status_code=404, detail="No such window.")
+    return JSONResponse(content={"ok": True})
+
+
+@app.post("/admin/availability/blocks")
+def admin_add_block(req: BlockRequest, ctx: dict = Depends(require_admin)) -> JSONResponse:
+    def _add(c):
+        tid = ctx["tenant"]["id"]
+        tz = availability.get_timezone(c, tid)
+        return availability.add_block(
+            c,
+            tid,
+            starts_at=availability.parse_local(req.starts_at, tz),
+            ends_at=availability.parse_local(req.ends_at, tz),
+            reason=req.reason,
+        )
+
+    return JSONResponse(content={"ok": True, "id": _with_store(_add)})
+
+
+@app.delete("/admin/availability/blocks/{block_id}")
+def admin_delete_block(block_id: str, ctx: dict = Depends(require_admin)) -> JSONResponse:
+    if not _with_store(lambda c: availability.delete_block(c, ctx["tenant"]["id"], block_id)):
+        raise HTTPException(status_code=404, detail="No such block.")
+    return JSONResponse(content={"ok": True})
+
+
+@app.get("/admin/availability/open")
+def admin_open_windows(days: int = 14, ctx: dict = Depends(require_admin)) -> JSONResponse:
+    """Preview of the deterministic read Brick 6 will book against: weekly hours minus
+    blocks, in the tenant's timezone."""
+    wins = _with_store(lambda c: availability.open_windows(c, ctx["tenant"]["id"], days=days))
+    return JSONResponse(
+        content={"open": [{"start": w.start.isoformat(), "end": w.end.isoformat()} for w in wins]}
+    )
 
 
 @app.get("/admin")

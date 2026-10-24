@@ -6,6 +6,90 @@ load-bearing (F5).
 
 ---
 
+## BRICK 5 — Availability store (admin edits the schedule; it lives as data) — **LANDED 2026-10-24**
+
+**Session:** 2026-10-24 · Opus 5.5 · founder GO "Yes, build Brick 5". Founder framing, verbatim:
+the engine "is the clonable version for what i sell to small business so it needs to do what i
+advertise for others basically, wether i use it that way or not" — availability must support
+BOTH manual weekly hours AND calendar sync. PGT's own use: "prefer to have the assistant fork to
+email then confirm or set a time for a call back then i'd call them" (no video; phone only as a
+call-back). Recorded here because it shapes Brick 6 (see below).
+
+### What was built
+
+- `app/availability.py` (NEW) — three scoped tables' rails, all through `with_tenant` AND
+  filtering/tagging `tenant_id` in SQL (F6): `get_timezone`/`set_timezone` (IANA-validated),
+  `add_window`/`list_windows`/`delete_window` (weekday 0-6, **0 = Sunday — Tinker's
+  convention, ported from `src/schedule/types.ts`**, "HH:mm" local, no midnight crossing),
+  `add_block`/`list_blocks`/`delete_block` (absolute instants; `source` 'manual' | 'calendar').
+  `compute_open_windows` (PURE: each local day's weekly windows minus blocks, resolved per date
+  via zoneinfo so DST keeps wall-clock times) + `open_windows(conn, tenant, start_date, days)` —
+  **the deterministic read Brick 6 books against (F2).** Malformed ids → "not found", never a DB
+  type error.
+- `app/db_schema.py` — `availability_settings` (one row/tenant, PK tenant_id),
+  `availability_window` (CHECK weekday 0-6, end > start), `availability_block` (CHECK ends >
+  starts, source IN ('manual','calendar')); all three appended to `TENANT_SCOPED_TABLES` →
+  ENABLE + FORCE RLS + isolation policy. Additive (`IF NOT EXISTS`).
+- `app/main.py` — guarded (`require_admin`) routes: `GET /admin/availability`,
+  `PUT /admin/availability/timezone`, `POST|DELETE /admin/availability/windows[/{id}]`,
+  `POST|DELETE /admin/availability/blocks[/{id}]` (block times entered as wall time in the
+  tenant's zone), `GET /admin/availability/open?days=N` (1-62). Bad input → 400 with the reason;
+  store down → 503. Block times are RENDERED in the tenant's zone (the DB returns its session zone).
+- `static/admin.html` — Leads | Availability tabs; time zone, weekly hours (add/remove), blocked
+  time (add/remove, source tag), and a "Open in the next 14 days" preview of the exact read the
+  assistant will use.
+- `requirements.txt` — `tzdata==2026.5` pinned (Windows has no system tz db; it was only arriving
+  transitively). No new service, **no recurring cost (F3)**.
+- `tests/test_admin_endpoints.py` — teardown now drops every scoped table by list (the hand-written
+  admin/lead/tenant drop broke on the new FKs). No assertion changed.
+
+### Proof — transcribed (portable PG 16.4 at `PGT\tools\pg16`, port 54329; superuser → fixture role-switch, RLS enforced as on Neon)
+
+- **68 passed** (was 50: +18 in `tests/test_availability.py` — 7 pure, 7 wall incl. the red control
+  parametrized ×3 tables, 4 endpoint).
+- **Red control per new table (F1):** RLS on → unscoped read 0; RLS DISABLED → raw read **2** (the
+  leak) on each of the 3 tables; the app's reads + cross-tenant deletes still isolate (F6). Restored.
+- **Mutations watched red, then restored:** (A) `list_windows` without `tenant_id` filter →
+  `test_red_control…[availability_window]` FAILED; (B) `delete_block` without `tenant_id` →
+  `…[availability_block]` FAILED (A could delete B's block); (C) block subtraction disabled → 4
+  FAILED (split, whole-day, cross-zone instant, store read). Note A/B were caught ONLY by the
+  RLS-off test — exactly F6's point. Restored → 68 passed.
+- **DST:** a Monday 09:00 window stays 09:00 local across 2026-11-01 (offset -4 → -5), test-pinned.
+- **Served behavior, live server:** `init_db` + `seed_admin` on a fresh DB, uvicorn on :8765,
+  curl: login → empty view → add Tue 09-12 + Thu 13-15 → block Tue 10-11 → reversed window → 400
+  "end must be after start" → `/open?days=7` = Tue 09-10, Tue 11-12, Thu 13-15 (-04:00) →
+  `/admin` 200, unauthed `/open` 401. Admin page script passes `node --check`.
+
+### ⚠ Made load-bearing
+
+- **`open_windows()` is THE availability read.** Brick 6 must book against it, never against corpus
+  prose (F2). A calendar-sync brick WRITES `availability_block` rows with `source='calendar'`; it is
+  a writer into this store, never a second source the assistant reads.
+- **Weekday 0 = Sunday** (Tinker's convention) — `compute_open_windows` converts from Python's
+  Mon=0. Changing either side silently shifts every window a day.
+- Every availability read/delete filters `tenant_id` in SQL (F6); keep it on any new query.
+
+### What I did NOT do (named)
+
+- **No Neon migration, no push, no deploy** — founder GO was "build", not deploy. Prod needs
+  `python -m scripts.init_db` against Neon (additive) BEFORE the deploy that serves these routes;
+  until then `/admin/availability*` would 500 on the missing tables.
+- **No browser eyeball of the Availability tab** — no browser tool in this session. The API flow
+  and the script's syntax are proven; the rendered layout is founder-hands (`/admin` → Availability).
+- **Calendar sync not built** (founder: "both") — slated as its own brick (Google OAuth = founder
+  setup; writes busy times as `source='calendar'` blocks). Brick 6/7 untouched.
+
+### Owed / next
+
+- **Founder-hands:** look at the Availability tab live (local or after deploy); enter PGT's real
+  call-back hours.
+- **Deploy (on founder GO):** Neon `init_db` → push → Render auto-deploys.
+- **Brick 6 shape, from the founder's words:** for PGT the assistant forks to email, then confirms
+  or sets a call-back time from `open_windows()`; the founder calls them. The clonable engine also
+  needs plain slot booking for tenants that sell it. Founder rules the shape at Brick 6's STEP-0.
+
+---
+
 ## TINKER IN-APP HELP PROFILE — **LANDED 2026-10-24** (founder GO; F3 cost flag given)
 
 Founder chose "reuse your website assistant" for Tinker's Help button (a few cents per
