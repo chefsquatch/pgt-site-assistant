@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 from . import config, corpus, db
 from .admins import find_admin_by_email, find_admin_by_id
-from .assistant import AssistantError, ConfigError, GenerationError, respond
+from .assistant import AssistantError, ConfigError, GenerationError, respond, respond_tinker
 from .auth import (
     ADMIN_COOKIE,
     SESSION_TTL_MS,
@@ -80,7 +80,7 @@ def _email_fallback(message: str) -> dict:
         "error": message,
         "founder_email": config.FOUNDER_EMAIL,
         "fallback": (
-            "Something went wrong on my end — I'd rather tell you than guess. You can "
+            "Something went wrong on my end, and I'd rather tell you than guess. You can "
             f"reach Les directly at {config.FOUNDER_EMAIL}."
         ),
     }
@@ -95,6 +95,7 @@ def health() -> dict:
         "status": "ok",
         "corpus_sections": sections,
         "corpus_loaded": len(sections),
+        "tinker_help_sections": corpus.corpus_sections("tinker"),
         "model": config.ANTHROPIC_MODEL,
         "key_present": bool(config.ANTHROPIC_API_KEY),
     }
@@ -130,6 +131,40 @@ def chat(req: ChatRequest) -> JSONResponse:
     )
 
 
+def _tinker_fallback(message: str) -> dict:
+    return {
+        "error": message,
+        "reply": (
+            "Help is having trouble right now, so I won't guess. Click \"Email PGT support\" "
+            "below and PGT will get back to you."
+        ),
+        "needs_human": True,
+    }
+
+
+@app.post("/tinker/help")
+def tinker_help(req: ChatRequest) -> JSONResponse:
+    """Tinker in-app help. Called server-to-server by the Tinker app (which owns the admin's
+    session and sends any escalation email itself), so it needs no CORS and stores nothing."""
+    history = [{"role": t.role, "content": t.content} for t in req.history]
+    try:
+        result = respond_tinker(history)
+    except ConfigError as exc:
+        return JSONResponse(status_code=503, content=_tinker_fallback(str(exc)))
+    except GenerationError as exc:
+        return JSONResponse(status_code=502, content=_tinker_fallback(str(exc)))
+    except AssistantError as exc:
+        return JSONResponse(status_code=400, content=_tinker_fallback(str(exc)))
+    return JSONResponse(
+        content={
+            "reply": result.reply,
+            "in_corpus": result.in_corpus,
+            "needs_human": result.needs_human,
+            "issue_summary": result.issue_summary,
+        }
+    )
+
+
 @app.post("/contact")
 def contact(req: ContactRequest) -> JSONResponse:
     # Pydantic already rejected malformed/empty/oversized fields with a 422 before
@@ -161,7 +196,7 @@ def contact(req: ContactRequest) -> JSONResponse:
             content={
                 "ok": False,
                 "error": (
-                    "Sorry — I couldn't send that just now. You can email Les "
+                    "Sorry, I couldn't send that just now. You can email Les "
                     f"directly at {config.FOUNDER_EMAIL}."
                 ),
             },

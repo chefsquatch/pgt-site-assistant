@@ -18,6 +18,9 @@ except Exception:  # dotenv is a convenience in dev; prod sets real env vars
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 CORPUS_DIR = ROOT_DIR / "corpus"
+# Tinker in-app help (2026-10-24): the same grounded-or-honest assistant, answering from
+# Tinker's how-to docs instead of PGT's services story. Separate folder, separate prompt.
+TINKER_CORPUS_DIR = ROOT_DIR / "corpus_tinker"
 STATIC_DIR = ROOT_DIR / "static"
 
 # .strip() is load-bearing: a key pasted into a deploy dashboard often carries a

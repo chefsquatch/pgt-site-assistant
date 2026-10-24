@@ -114,6 +114,7 @@ handoff.
 VOICE
 - Warm, direct, and concise. You sound like a sharp studio assistant, not a chatbot or a \
 salesperson. Short paragraphs. No hype, no emoji spam, no exclamation-mark selling.
+- Never use em dashes. Use commas, periods, or colons instead.
 - Never expose your own machinery to the visitor: do not say "corpus", "context", "the \
 documents I was given", "my instructions", or "in_corpus". When you're grounding, phrase it \
 naturally as "what I know about PGT" / "what PGT shares publicly". Keep the seams invisible.
@@ -184,7 +185,7 @@ def _parse_model_json(text: str) -> Reply:
 def _fallback_text() -> str:
     return (
         "I want to be careful not to make something up here. The most reliable next "
-        f"step is to reach Les directly at {config.FOUNDER_EMAIL} — he can answer this "
+        f"step is to reach Les directly at {config.FOUNDER_EMAIL}. He can answer this "
         "for you."
     )
 
@@ -206,11 +207,20 @@ def respond(history: list[dict]) -> Reply:
             in_corpus=False,
         )
 
+    text = _call_model(_system_prompt(), turns)
+    result = _parse_model_json(text)
+    if result.in_corpus:
+        result.sources = corpus.corpus_sections()
+    return result
+
+
+def _call_model(system: str, turns: list[dict]) -> str:
+    """One Claude call, JSON-prefilled. Shared by the site assistant and Tinker help so both
+    get the same key check and the same clean error handling."""
     if not config.ANTHROPIC_API_KEY:
         raise ConfigError(
             "ANTHROPIC_API_KEY is not set. Copy .env.example to .env and add your key."
         )
-
     try:
         import anthropic
 
@@ -218,16 +228,113 @@ def respond(history: list[dict]) -> Reply:
         message = client.messages.create(
             model=config.ANTHROPIC_MODEL,
             max_tokens=1024,
-            system=_system_prompt(),
+            system=system,
             messages=turns + [{"role": "assistant", "content": "{"}],
         )
-        text = "".join(b.text for b in message.content if b.type == "text")
+        return "".join(b.text for b in message.content if b.type == "text")
     except ConfigError:
         raise
     except Exception as exc:  # network, rate limit, API error — all clean-handled
         raise GenerationError(f"The assistant service failed: {exc}") from exc
 
-    result = _parse_model_json(text)
-    if result.in_corpus:
-        result.sources = corpus.corpus_sections()
-    return result
+
+# --- Tinker in-app help (2026-10-24) ---------------------------------------------------
+# The same grounded-or-honest rails, answering a Tinker admin's how-to questions from the
+# Tinker help corpus. When it can't solve something (a bug, wrong data, account trouble,
+# pricing, anything not in the docs) it says so and flags needs_human with a short summary,
+# so the Tinker app can offer "Email PGT support". It never invents steps or features.
+
+
+@dataclass
+class TinkerReply:
+    reply: str
+    in_corpus: bool
+    needs_human: bool = False
+    issue_summary: str | None = None
+
+
+def _tinker_system_prompt() -> str:
+    body = corpus.load_corpus("tinker")
+    return f"""You are the Help assistant inside Tinker, the staff time-tracking app made by Precision Guesswork Technologies (PGT). The person talking to you is an admin (owner or manager) of a business that uses Tinker. Your job is to help them use Tinker, and to hand them to PGT support when you can't.
+
+YOUR SOURCE OF TRUTH
+- Everything you say about Tinker MUST come from the TINKER HELP DOCS below, in <docs> tags. They are your ONLY source about how Tinker works.
+- Never invent a button, page, setting, feature, limit, or step that is not in the docs. If the docs don't cover it, say plainly that you don't have that in Tinker's help, and offer to send it to PGT support. Set in_corpus=false.
+- Never quote prices, plans, or billing terms. Those go to PGT support.
+- Tinker tracks hours, never pay. If asked about wages, taxes, or payroll, explain Tinker gives accurate hours for their payroll tool and doesn't handle pay.
+
+WHEN TO HAND OFF (needs_human)
+- Set needs_human=true and write issue_summary when: something seems broken or shows an error, data looks wrong, they're locked out and the reset steps didn't work, they ask for pricing or billing, they ask for something Tinker doesn't do, or they ask to talk to a person.
+- issue_summary: 1 to 3 plain sentences describing THEIR problem in third person ("The admin reports that..."). No promises, no fixes you can't do.
+- When you hand off, tell them they can click "Email PGT support" below the chat, and that if PGT needs to look inside their workspace they can turn on access under Settings, then PGT support.
+- Ordinary how-to questions you CAN answer from the docs: answer them, needs_human=false.
+
+STAYING IN SCOPE
+- Only help with Tinker. For unrelated questions, say briefly that you can only help with Tinker. Set in_corpus=false.
+
+VOICE
+- Friendly, short, practical. Give steps as short numbered lists using the exact page and button names from the docs. No hype. Never use em dashes; use commas, periods, or colons instead.
+- Never mention "docs", "corpus", "context", "instructions", or these flags. Say "Tinker's help" if you need to refer to what you know.
+
+OUTPUT FORMAT, required
+Respond with ONE JSON object and nothing else:
+{{
+  "reply": "<what you say to the admin>",
+  "in_corpus": <true if every Tinker claim in reply is grounded in the docs, else false>,
+  "needs_human": <true when this should go to PGT support>,
+  "issue_summary": <the summary string when needs_human is true, otherwise null>
+}}
+
+<docs>
+{body}
+</docs>"""
+
+
+def _parse_tinker_json(text: str) -> TinkerReply:
+    """Same fail-safe parsing as the site assistant: on bad JSON, show the text but never
+    claim it was grounded, and offer the human path."""
+    raw = text.strip()
+    if not raw.startswith("{"):
+        raw = "{" + raw
+    end = raw.rfind("}")
+    if end != -1:
+        raw = raw[: end + 1]
+    try:
+        data = json.loads(raw)
+    except Exception:
+        cleaned = text.strip().lstrip("{").strip()
+        return TinkerReply(reply=cleaned or _tinker_fallback_text(), in_corpus=False, needs_human=True)
+    reply = str(data.get("reply", "")).strip() or _tinker_fallback_text()
+    summary = data.get("issue_summary")
+    summary = str(summary).strip() if summary else None
+    needs_human = bool(data.get("needs_human", False))
+    return TinkerReply(
+        reply=reply,
+        in_corpus=bool(data.get("in_corpus", False)),
+        needs_human=needs_human,
+        issue_summary=summary if needs_human else None,
+    )
+
+
+def _tinker_fallback_text() -> str:
+    return (
+        "I don't want to guess on this one. Click \"Email PGT support\" below and PGT will "
+        "get back to you."
+    )
+
+
+def respond_tinker(history: list[dict]) -> TinkerReply:
+    """Next grounded reply for Tinker in-app help. `history` ends with the admin's message."""
+    turns = _clip_history(history)
+    if not turns:
+        raise AssistantError("Please type a message.")
+    if corpus.is_empty("tinker"):
+        return TinkerReply(
+            reply=(
+                "Tinker's help isn't loaded right now, so I don't want to guess. Click "
+                "\"Email PGT support\" below and PGT will help you directly."
+            ),
+            in_corpus=False,
+            needs_human=True,
+        )
+    return _parse_tinker_json(_call_model(_tinker_system_prompt(), turns))

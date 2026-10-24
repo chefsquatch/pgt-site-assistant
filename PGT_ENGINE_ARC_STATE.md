@@ -6,6 +6,26 @@ load-bearing (F5).
 
 ---
 
+## TINKER IN-APP HELP PROFILE — **LANDED 2026-10-24** (founder GO; F3 cost flag given)
+
+Founder chose "reuse your website assistant" for Tinker's Help button (a few cents per
+conversation, on the existing Claude key). F4 honored: same service, second PROFILE, not a fork.
+- `corpus_tinker/00-tinker-help.md`: Tinker how-to grounding (every screen with real labels;
+  hours-not-pay; no pricing; no em dashes, test-enforced).
+- `app/corpus.py`: `load_corpus(profile)` / `corpus_sections(profile)` / `is_empty(profile)`,
+  default "site" so every existing caller is unchanged.
+- `app/assistant.py`: model call factored into `_call_model` (shared); `respond_tinker` +
+  `_tinker_system_prompt` (grounded-or-honest, `needs_human` + `issue_summary` for handoff, fail
+  safe on bad JSON = not grounded + human path, empty corpus = no model call).
+- `POST /tinker/help` {history} -> {reply,in_corpus,needs_human,issue_summary}. Server-to-server
+  from Tinker (Tinker owns the admin session and sends the escalation email itself via its own
+  Resend), so no CORS, nothing stored, no lead capture. `/health` lists `tinker_help_sections`.
+- Site chat: "Never use em dashes" added to VOICE; visible fallback strings de-dashed (founder rule).
+- `tests/test_tinker_help.py` 9 tests; red proven (site corpus leak, bad-JSON grounded, empty
+  corpus model call). Suite 19 passed / 31 skipped (DB); smoke_contact 13/13, smoke_errors 10/10.
+
+---
+
 ## BRICK 4 — Admin view (see captured leads, tenant-scoped) — **LANDED 2026-10-09**
 
 **Session:** 2026-10-09 · Opus 4.8 · founder queued "after that brick 4" (after the

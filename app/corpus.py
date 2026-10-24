@@ -29,19 +29,26 @@ def _read_corpus_files(corpus_dir: Path) -> list[tuple[str, str]]:
     return out
 
 
-@lru_cache(maxsize=1)
-def load_corpus() -> str:
+def _dir(profile: str) -> Path:
+    """Corpus folder per assistant profile: 'site' (PGT services) or 'tinker' (Tinker help)."""
+    if profile == "tinker":
+        return config.TINKER_CORPUS_DIR
+    return config.CORPUS_DIR
+
+
+@lru_cache(maxsize=4)
+def load_corpus(profile: str = "site") -> str:
     """Return the whole corpus as one grounding block, section-tagged by file."""
     blocks = []
-    for name, text in _read_corpus_files(config.CORPUS_DIR):
+    for name, text in _read_corpus_files(_dir(profile)):
         blocks.append(f"### SOURCE: {name}\n{text}")
     return "\n\n".join(blocks)
 
 
-def corpus_sections() -> list[str]:
+def corpus_sections(profile: str = "site") -> list[str]:
     """Filenames currently in the corpus (for /health and tests)."""
-    return [name for name, _ in _read_corpus_files(config.CORPUS_DIR)]
+    return [name for name, _ in _read_corpus_files(_dir(profile))]
 
 
-def is_empty() -> bool:
-    return load_corpus().strip() == ""
+def is_empty(profile: str = "site") -> bool:
+    return load_corpus(profile).strip() == ""
