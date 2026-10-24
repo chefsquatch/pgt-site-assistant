@@ -92,6 +92,14 @@ Settings pages: Share clock-in, Roles, Locations, Devices, PGT support.
 
 - Tinker's privacy policy is at tinker.precisionguessworktech.com/privacy. Location is optional, visible only to the business's admins, and never sold.
 
+## Common questions and quick checks
+
+- Hours report shows no hours, or says "Set a pay period above to see the report": set the pay period first (Weekly, Biweekly, or Semimonthly, plus the first day of a period for weekly and biweekly). Then use the previous and next period buttons to make sure you are looking at the period when people worked. If hours still look wrong after that, send it to PGT support.
+- Someone forgot to clock out: open Correct a punch, find their open punch, set the clock-out time, and click "Save correction".
+- An employee can't clock in: check they are using their own passkey on the right business's clock page, and that they were not removed (look under Former employees on the Roster and click "Restore" if needed). If they forgot their passkey, send them a new join link.
+- A punch shows "off-site": either location is turned off for that employee, or the place isn't added under Locations yet, or they were outside every location's radius.
+- Didn't get an email from Tinker (reset link, report, schedule): check the spam folder, and make sure the email address is correct.
+
 ## Not covered here
 
 - Pricing, plans, billing, and contracts are handled by PGT directly. The assistant does not quote prices.
