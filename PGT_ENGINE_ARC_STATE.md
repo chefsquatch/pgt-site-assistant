@@ -52,6 +52,14 @@ account + A2P registration); email only until a client is paying.
   E `/t/` CORS layer removed → origin test FAILED; F slug check removed → path test FAILED; G alert
   not sent to the owner → lead/email test FAILED. Restored → 82 passed.
 
+### Deploy mechanism (⚠ LOAD-BEARING, 2026-10-25)
+- Render's Pre-Deploy Command is locked on this service, so the **Start Command** is now
+  `python -m scripts.init_db; uvicorn app.main:app --host 0.0.0.0 --port $PORT`. Every boot re-applies
+  the idempotent schema + RLS before serving, using Render's own DATABASE_URL (no secret leaves Render).
+  `;` not `&&`: a Neon hiccup at boot can't take the site down (worst case a new route 500s until the
+  next boot). This retires the "run init_db against Neon before deploying" owed step for every future
+  brick. Proven: the first boot with it logged `[init_db] schema + RLS wall applied`.
+
 ### What I did NOT do
 - SMS/text alerts (F3, founder account needed). Lead status editing. Per-tenant branding of /admin.
 - Seeded no admin password for any tenant (credentials are the founder's to choose).
