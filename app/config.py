@@ -56,6 +56,10 @@ RESEND_FROM = os.getenv("RESEND_FROM", "PGT Site <onboarding@resend.dev>").strip
 # Client lead alerts go out from the verified PGT domain so they can reach any client inbox
 # (Resend's shared onboarding sender can only deliver to the Resend account's own address).
 CLIENT_LEAD_FROM = os.getenv("CLIENT_LEAD_FROM", "PGT Leads <leads@precisionguessworktech.com>").strip()
+# The key for the Resend account where that domain IS verified (2026-10-25 live proof: the
+# site's RESEND_API_KEY belongs to an account without it, so client alerts 403'd). Separate
+# slot so the contact form keeps its own key; falls back to RESEND_API_KEY when unset.
+CLIENT_RESEND_API_KEY = os.getenv("CLIENT_RESEND_API_KEY", "").strip() or RESEND_API_KEY
 
 # Public client chat (/t/<slug>/chat) is open to any origin, so it is rate limited per IP.
 CLIENT_CHAT_PER_HOUR = int(os.getenv("CLIENT_CHAT_PER_HOUR", "40"))

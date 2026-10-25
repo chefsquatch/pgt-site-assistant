@@ -55,6 +55,7 @@ def env(monkeypatch, tmp_path):
     monkeypatch.delenv("RENDER", raising=False)
     monkeypatch.delenv("ADMIN_SESSION_SECRET", raising=False)
     monkeypatch.setattr(config, "RESEND_API_KEY", "test-key")
+    monkeypatch.setattr(config, "CLIENT_RESEND_API_KEY", "client-key")
     monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "test-key")
     monkeypatch.setattr(config, "LEAD_INBOX", "les@pgt.test")
     monkeypatch.setattr(config, "CLIENT_CHAT_PER_MIN", 100)
@@ -91,7 +92,7 @@ def env(monkeypatch, tmp_path):
         text = "ok"
 
     def fake_post(url, json=None, headers=None, timeout=None):
-        sent.append(json)
+        sent.append({**json, "_auth": headers.get("Authorization")})
         return _Resp()
 
     monkeypatch.setattr(notify.httpx, "post", fake_post)
@@ -170,6 +171,8 @@ def test_lead_is_stored_under_its_tenant_only_and_emailed_to_its_owner(env, monk
     mail = env["sent"][0]
     assert mail["to"] == ["owner@alpha.test"] and mail["cc"] == ["les@pgt.test"]
     assert "Dana Cole" in mail["subject"] and "My water heater is leaking" in mail["text"]
+    # Sent on the client-alert key (the verified-domain account), not the contact form's.
+    assert mail["_auth"] == "Bearer client-key"
 
 
 def test_urgent_lead_is_marked(env, monkeypatch):

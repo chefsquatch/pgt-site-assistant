@@ -40,8 +40,8 @@ def lead_email_text(business: str, lead: dict, transcript: list[dict]) -> str:
 
 def email_lead(tenant: dict, lead: dict, transcript: list[dict]) -> bool:
     """Send the lead to the tenant's notify_email (copy to PGT). Never raises."""
-    if not config.RESEND_API_KEY:
-        log.warning("lead alert not sent: RESEND_API_KEY unset tenant=%s", tenant.get("slug"))
+    if not config.CLIENT_RESEND_API_KEY:
+        log.warning("lead alert not sent: no Resend key set tenant=%s", tenant.get("slug"))
         return False
     to = [a for a in [tenant.get("notify_email")] if a]
     cc = [config.LEAD_INBOX] if config.LEAD_INBOX and config.LEAD_INBOX not in to else []
@@ -64,7 +64,7 @@ def email_lead(tenant: dict, lead: dict, transcript: list[dict]) -> bool:
         resp = httpx.post(
             RESEND_ENDPOINT,
             json=payload,
-            headers={"Authorization": f"Bearer {config.RESEND_API_KEY}"},
+            headers={"Authorization": f"Bearer {config.CLIENT_RESEND_API_KEY}"},
             timeout=10,
         )
     except Exception as exc:

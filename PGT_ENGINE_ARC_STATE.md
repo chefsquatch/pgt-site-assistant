@@ -60,6 +60,22 @@ account + A2P registration); email only until a client is paying.
   next boot). This retires the "run init_db against Neon before deploying" owed step for every future
   brick. Proven: the first boot with it logged `[init_db] schema + RLS wall applied`.
 
+### Live proof on production (2026-10-25, after the Starter upgrade)
+- Service moved Free → **Starter ($7/mo, founder-approved)**: no spin-down, Shell available, no
+  shared free-hours cap. `add_tenant` run in Render Shell → `pgt-sample-plumbing` registered.
+- Served text, `POST /t/pgt-sample-plumbing/chat` from outside (Origin example-client.com, ~3s each):
+  "How much is a service call?" → "$89, and we waive that fee if we end up doing the repair." (corpus);
+  "Do you install solar panels?" → "We don't install solar panels..." (declined, nothing invented);
+  leaking water heater + "Les Test, 810-555-0142" → lead `{urgent:true}` returned, and Neon holds
+  `('Les Test','810-555-0142','URGENT: Water heater leaking in basement')` under that tenant only.
+- **Alert email FAILED live:** Resend 403 "precisionguessworktech.com domain is not verified". The
+  site's RESEND_API_KEY belongs to a Resend account without the domain (the verified one is on a
+  different account). Fix: `CLIENT_RESEND_API_KEY` (falls back to RESEND_API_KEY), used only by
+  `notify.py`, so the contact form keeps its key. Test asserts the alert rides the client key; red
+  control (alert on the old key) → FAILED; restored → 82 passed. **Owed (founder hands): paste the
+  verified-domain account's Resend key into CLIENT_RESEND_API_KEY on this service, then re-run the
+  lead test.** Until then, client leads are stored and visible on /admin but not emailed.
+
 ### What I did NOT do
 - SMS/text alerts (F3, founder account needed). Lead status editing. Per-tenant branding of /admin.
 - Seeded no admin password for any tenant (credentials are the founder's to choose).
