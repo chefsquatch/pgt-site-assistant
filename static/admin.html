@@ -171,6 +171,7 @@
       var tag = l.source === "contact" ? "contact" : "assistant";
       return '<tr>'
         + '<td>'+(l.name ? esc(l.name) : '<span class="muted">—</span>')+'</td>'
+        + '<td>'+(l.phone ? esc(l.phone) : '<span class="muted">—</span>')+'</td>'
         + '<td>'+(l.email ? esc(l.email) : '<span class="muted">—</span>')+'</td>'
         + '<td>'+esc(l.problem_summary || '')+'</td>'
         + '<td><span class="tag '+tag+'">'+esc(l.source)+'</span></td>'
@@ -179,7 +180,7 @@
         + '</tr>';
     }).join("");
     $("leads-body").innerHTML =
-      '<table><thead><tr><th>Name</th><th>Email</th><th>Problem</th><th>Source</th><th>Status</th><th>When</th></tr></thead>'
+      '<table><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Request</th><th>Source</th><th>Status</th><th>When</th></tr></thead>'
       + '<tbody>'+rows+'</tbody></table>';
   }
 
@@ -309,7 +310,9 @@
     fetch("/admin/login", {
       method:"POST", credentials:"same-origin",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ email: $("email").value, password: $("password").value })
+      // A client business signs in at /admin?w=<their-slug> (Brick 4b); PGT when absent.
+      body: JSON.stringify({ email: $("email").value, password: $("password").value,
+                             workspace: new URLSearchParams(location.search).get("w") || "pgt" })
     })
     .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
     .then(function(res){

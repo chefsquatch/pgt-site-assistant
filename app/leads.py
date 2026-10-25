@@ -18,8 +18,8 @@ Two levels:
     a lead is never lost during the transition off the email-only stopgap. (F4: expand,
     don't regress the proven front.)
 
-The tenant is hardcoded to PGT (tenant zero) for the single-tenant PGT deploy; later
-bricks add real per-slug resolution at this same seam.
+The tenant defaults to PGT (tenant zero). Client tenants (Brick 4b) pass their own
+resolved slug through `tenant_slug`, the per-slug resolution this seam was built for.
 """
 
 from __future__ import annotations
@@ -40,6 +40,7 @@ def create_lead(
     problem_summary: str | None,
     name: str | None = None,
     email: str | None = None,
+    phone: str | None = None,
     source: str = "assistant",
 ) -> str:
     """Insert one lead for `tenant_id`, THROUGH the wall, and return its id.
@@ -54,9 +55,9 @@ def create_lead(
 
     def _insert(c: db.psycopg.Connection) -> str:
         row = c.execute(
-            "INSERT INTO lead (tenant_id, name, email, problem_summary, source) "
-            "VALUES (%s, %s, %s, %s, %s) RETURNING id",
-            (tenant_id, name, email, problem_summary, source),
+            "INSERT INTO lead (tenant_id, name, email, phone, problem_summary, source) "
+            "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+            (tenant_id, name, email, phone, problem_summary, source),
         ).fetchone()
         return str(row[0])
 
@@ -75,7 +76,7 @@ def list_leads(conn: db.psycopg.Connection, tenant_id: Any) -> list[dict]:
 
     def _select(c: db.psycopg.Connection):
         return c.execute(
-            "SELECT id, name, email, problem_summary, source, status, created_at "
+            "SELECT id, name, email, phone, problem_summary, source, status, created_at "
             "FROM lead WHERE tenant_id = %s ORDER BY created_at DESC",
             (tenant_id,),
         ).fetchall()
@@ -86,10 +87,11 @@ def list_leads(conn: db.psycopg.Connection, tenant_id: Any) -> list[dict]:
             "id": str(r[0]),
             "name": r[1],
             "email": r[2],
-            "problem_summary": r[3],
-            "source": r[4],
-            "status": r[5],
-            "created_at": r[6].isoformat() if r[6] is not None else None,
+            "phone": r[3],
+            "problem_summary": r[4],
+            "source": r[5],
+            "status": r[6],
+            "created_at": r[7].isoformat() if r[7] is not None else None,
         }
         for r in rows
     ]
@@ -100,6 +102,7 @@ def capture_lead(
     problem_summary: str | None,
     name: str | None = None,
     email: str | None = None,
+    phone: str | None = None,
     source: str,
     tenant_slug: str = PGT_TENANT_SLUG,
 ) -> str | None:
@@ -132,6 +135,7 @@ def capture_lead(
             problem_summary=problem_summary,
             name=name,
             email=email,
+            phone=phone,
             source=source,
         )
         log.info("lead persisted id=%s source=%s tenant=%s", lead_id, source, tenant_slug)

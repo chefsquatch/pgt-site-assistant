@@ -77,8 +77,25 @@ def resolve_tenant(conn: psycopg.Connection, slug: str) -> dict[str, Any] | None
     THROUGH with_tenant(conn, tenant['id'], ...).
     """
     row = conn.execute(
-        "SELECT id, slug, name FROM tenant WHERE slug = %s LIMIT 1", (slug,)
+        "SELECT id, slug, name, notify_email FROM tenant WHERE slug = %s LIMIT 1", (slug,)
     ).fetchone()
+    return _tenant_row(row)
+
+
+def get_tenant_by_id(conn: psycopg.Connection, tenant_id: Any) -> dict[str, Any] | None:
+    """Look a tenant up by id (a signed admin session carries the id, not the slug).
+    Directory read, outside with_tenant, same as resolve_tenant. A malformed id is None."""
+    try:
+        row = conn.execute(
+            "SELECT id, slug, name, notify_email FROM tenant WHERE id = %s::uuid LIMIT 1",
+            (str(tenant_id),),
+        ).fetchone()
+    except psycopg.errors.InvalidTextRepresentation:
+        return None
+    return _tenant_row(row)
+
+
+def _tenant_row(row) -> dict[str, Any] | None:
     if row is None:
         return None
-    return {"id": row[0], "slug": row[1], "name": row[2]}
+    return {"id": row[0], "slug": row[1], "name": row[2], "notify_email": row[3]}

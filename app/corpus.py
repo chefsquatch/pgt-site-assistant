@@ -12,6 +12,7 @@ substrate architecture, no canon. Shop window, not workshop.
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -29,14 +30,33 @@ def _read_corpus_files(corpus_dir: Path) -> list[tuple[str, str]]:
     return out
 
 
+# A tenant slug is lowercase letters, digits and hyphens. Checked before it ever becomes a
+# path, so "tenant:../corpus" can never read outside corpus_tenants/.
+_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+
+def valid_slug(slug: str) -> bool:
+    return bool(_SLUG_RE.match(slug or ""))
+
+
+def tenant_profile(slug: str) -> str:
+    return f"tenant:{slug}"
+
+
 def _dir(profile: str) -> Path:
-    """Corpus folder per assistant profile: 'site' (PGT services) or 'tinker' (Tinker help)."""
+    """Corpus folder per assistant profile: 'site' (PGT services), 'tinker' (Tinker help),
+    or 'tenant:<slug>' (a client business, Brick 4b)."""
     if profile == "tinker":
         return config.TINKER_CORPUS_DIR
+    if profile.startswith("tenant:"):
+        slug = profile.split(":", 1)[1]
+        if not valid_slug(slug):
+            raise ValueError(f"invalid tenant slug {slug!r}")
+        return config.TENANTS_CORPUS_DIR / slug
     return config.CORPUS_DIR
 
 
-@lru_cache(maxsize=4)
+@lru_cache(maxsize=64)
 def load_corpus(profile: str = "site") -> str:
     """Return the whole corpus as one grounding block, section-tagged by file."""
     blocks = []

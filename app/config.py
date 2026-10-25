@@ -21,6 +21,10 @@ CORPUS_DIR = ROOT_DIR / "corpus"
 # Tinker in-app help (2026-10-24): the same grounded-or-honest assistant, answering from
 # Tinker's how-to docs instead of PGT's services story. Separate folder, separate prompt.
 TINKER_CORPUS_DIR = ROOT_DIR / "corpus_tinker"
+# Client tenants (Brick 4b, 2026-10-25): one folder per tenant slug, corpus_tenants/<slug>/*.md,
+# holding that business's own public facts (services, hours, prices, area). Same grounding rail
+# as the site and Tinker profiles; editing the folder is how a client's assistant is updated.
+TENANTS_CORPUS_DIR = ROOT_DIR / "corpus_tenants"
 STATIC_DIR = ROOT_DIR / "static"
 
 # .strip() is load-bearing: a key pasted into a deploy dashboard often carries a
@@ -48,6 +52,14 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
 # Resend's shared onboarding sender works immediately; verifying
 # precisionguessworktech.com as the sender domain is a later optional polish.
 RESEND_FROM = os.getenv("RESEND_FROM", "PGT Site <onboarding@resend.dev>").strip()
+
+# Client lead alerts go out from the verified PGT domain so they can reach any client inbox
+# (Resend's shared onboarding sender can only deliver to the Resend account's own address).
+CLIENT_LEAD_FROM = os.getenv("CLIENT_LEAD_FROM", "PGT Leads <leads@precisionguessworktech.com>").strip()
+
+# Public client chat (/t/<slug>/chat) is open to any origin, so it is rate limited per IP.
+CLIENT_CHAT_PER_HOUR = int(os.getenv("CLIENT_CHAT_PER_HOUR", "40"))
+CLIENT_CHAT_PER_MIN = int(os.getenv("CLIENT_CHAT_PER_MIN", "8"))
 
 # Cap on conversation length sent to the model (turns kept from the tail).
 MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", "24"))

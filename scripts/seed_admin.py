@@ -5,6 +5,8 @@ code. Set them in the environment and run this once against the store (Neon in p
 
     ADMIN_EMAIL=you@example.com ADMIN_INITIAL_PASSWORD='a-strong-password' python -m scripts.seed_admin
 
+For a client business (Brick 4b), also set TENANT_SLUG=<their slug>; it defaults to PGT.
+
 Re-running with a new ADMIN_INITIAL_PASSWORD resets the password (upsert on the unique
 (tenant, email)). The password is hashed with scrypt (app/auth.py) before it ever
 touches the database — the plaintext is never stored and never printed back.
@@ -33,13 +35,15 @@ def main() -> int:
         )
         return 2
 
+    slug = (os.getenv("TENANT_SLUG") or PGT_TENANT_SLUG).strip().lower()
     conn = db.connect()
     conn.autocommit = True
     try:
-        tenant = db.resolve_tenant(conn, PGT_TENANT_SLUG)
+        tenant = db.resolve_tenant(conn, slug)
         if tenant is None:
             print(
-                "[seed_admin] PGT tenant zero not found — run `python -m scripts.init_db` first.",
+                f"[seed_admin] tenant {slug!r} not found. Run `python -m scripts.init_db` (PGT) "
+                "or `python -m scripts.add_tenant` (a client) first.",
                 file=sys.stderr,
             )
             return 1
@@ -47,7 +51,7 @@ def main() -> int:
             conn, tenant["id"], email=email, password_hash=hash_password(password)
         )
         who = admins.normalize_email(email)
-        print(f"[seed_admin] admin ready: id={admin_id} email={who} tenant={PGT_TENANT_SLUG}")
+        print(f"[seed_admin] admin ready: id={admin_id} email={who} tenant={slug}")
         return 0
     finally:
         conn.close()

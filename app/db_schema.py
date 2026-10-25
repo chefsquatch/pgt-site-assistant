@@ -119,6 +119,14 @@ CREATE TABLE IF NOT EXISTS availability_block (
 );
 
 CREATE INDEX IF NOT EXISTS availability_block_tenant_idx ON availability_block (tenant_id, starts_at);
+
+-- Client tenants (Brick 4b, 2026-10-25). Additive + idempotent, so init_db re-runs safely.
+-- notify_email lives on the DIRECTORY row: it is the tenant's own address for lead alerts,
+-- read when the tenant is resolved (outside with_tenant, like slug and name). NULL = PGT
+-- tenant zero, whose alerts already go through the contact path's LEAD_INBOX.
+ALTER TABLE tenant ADD COLUMN IF NOT EXISTS notify_email text;
+-- A local-business lead is a name and a phone number far more often than an email.
+ALTER TABLE lead ADD COLUMN IF NOT EXISTS phone text;
 """
 
 

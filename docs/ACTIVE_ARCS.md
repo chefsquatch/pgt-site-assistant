@@ -24,6 +24,7 @@ brick-one red-control proven on a **Neon test branch**.
 | 2 | Lead capture → store (assistant writes leads through `with_tenant`) | 1 | **LANDED 2026-09-28** (15 passed; /chat + /contact wired; commit-rollback bug found+fixed; ⚠ found Neon `neondb_owner` BYPASSRLS → ported Tinker's **F6 defense-in-depth**, proven on real Neon; Neon provisioned + tenant zero seeded) |
 | 3 | Admin auth (scrypt password + HMAC signed HttpOnly cookie) | 1 | **LANDED 2026-09-28** (35 passed; scrypt+HMAC ported from Tinker, stdlib-only; `admin` scoped table + red control + F6; login/logout/me proven via TestClient; owed: `ADMIN_SESSION_SECRET`, seed real admin, Neon migrate) |
 | 4 | Admin view (see/organize leads, tenant-scoped) | 1,2,3 | **LANDED 2026-10-09** (41 passed; `list_leads` F6-filtered + `/admin/leads` guarded + `/admin` page; proven in-browser login→leads; no schema change) |
+| 4b | Client tenants: a business is a tenant (own knowledge, own leads, owner alert email, owner login, embeddable widget) | 1,2,3,4 | **LANDED 2026-10-25** (82 passed; 7 mutations red; founder-inserted ahead of 5b/6/7; email alerts only, SMS deferred under F3) |
 | 5 | Availability store (admin edits schedule/availability) | 1 | **LANDED 2026-10-24** (68 passed; 3 walled tables + red control ×3 + F6 mutations red; deterministic `open_windows()` DST-safe; admin Availability tab; ⚠ NOT deployed: Neon `init_db` owed before the deploy) |
 | 5b | Calendar sync (business's busy times → `availability_block` source='calendar') | 5 | SLATED (founder: engine must do "both"; Google OAuth = founder setup) |
 | 6 | Assistant reads availability deterministically + books | 5 | SLATED |
@@ -54,4 +55,5 @@ brick-one red-control proven on a **Neon test branch**.
   routes 500 without the 3 new tables); eyeball the Availability tab; enter PGT's real call-back
   hours as data. PGT's model (founder 2026-10-24): email first, then a confirmed call-back time —
   no video, phone only as a call-back.
+- **B4b:** per client: `corpus_tenants/<slug>/` + `scripts.add_tenant` + `scripts.seed_admin` (TENANT_SLUG) + widget tag on their site. SMS alerts = founder decision (Twilio account, cost) once a client pays.
 - **B7:** `RESEND_API_KEY` + verified sender domain (already owed).

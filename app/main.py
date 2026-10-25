@@ -15,16 +15,25 @@ never a raw stack trace, never a silent hang, never a fabricated answer.
 from __future__ import annotations
 
 import os
+import time
+from collections import defaultdict, deque
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 
-from . import availability, config, corpus, db
+from . import availability, config, corpus, db, notify
 from .admins import find_admin_by_email, find_admin_by_id
-from .assistant import AssistantError, ConfigError, GenerationError, respond, respond_tinker
+from .assistant import (
+    AssistantError,
+    ConfigError,
+    GenerationError,
+    respond,
+    respond_client,
+    respond_tinker,
+)
 from .auth import (
     ADMIN_COOKIE,
     SESSION_TTL_MS,
@@ -64,6 +73,27 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
+
+
+# Client chat (/t/<slug>/...) is embedded on each client's own website, so it answers any
+# origin. No credentials ever ride on it (no cookies, allow_credentials stays False), which is
+# what makes "*" safe here. Every other route keeps the allow-list above. Registered after the
+# CORS middleware, so it is the outer layer and answers /t/ preflights before the allow-list.
+@app.middleware("http")
+async def _client_cors(request: Request, call_next):
+    if not request.url.path.startswith("/t/"):
+        return await call_next(request)
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Max-Age": "600",
+    }
+    if request.method == "OPTIONS":
+        return Response(status_code=204, headers=headers)
+    resp = await call_next(request)
+    resp.headers.update(headers)
+    return resp
 
 
 class Turn(BaseModel):
@@ -166,6 +196,89 @@ def tinker_help(req: ChatRequest) -> JSONResponse:
     )
 
 
+# --- Client tenants (Brick 4b) -----------------------------------------------------------
+# A client business is a tenant. Its customers chat at /t/<slug>/chat from the widget on the
+# business's own site; a captured lead is stored under THAT tenant (the capture seam's
+# per-slug resolution) and emailed to its owner. Rate limited per IP (ported from the
+# vertical-demos guard), since the route is public and every call costs a model request.
+
+_client_hits: dict[str, deque] = defaultdict(deque)
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "?")
+
+
+def _client_rate_limited(ip: str) -> bool:
+    now = time.time()
+    dq = _client_hits[ip]
+    while dq and dq[0] < now - 3600:
+        dq.popleft()
+    if len(dq) >= config.CLIENT_CHAT_PER_HOUR:
+        return True
+    if sum(1 for t in dq if t > now - 60) >= config.CLIENT_CHAT_PER_MIN:
+        return True
+    dq.append(now)
+    return False
+
+
+class ClientChatRequest(BaseModel):
+    history: list[Turn]
+    # The widget sets this once it has shown a lead, so one conversation stores one lead.
+    lead_captured: bool = False
+
+
+def _client_fallback(message: str) -> dict:
+    return {
+        "error": message,
+        "reply": "Sorry, I'm having trouble right now. Please call or try again in a minute.",
+    }
+
+
+@app.post("/t/{slug}/chat")
+def client_chat(slug: str, req: ClientChatRequest, request: Request) -> JSONResponse:
+    if not corpus.valid_slug(slug):
+        return JSONResponse(status_code=404, content=_client_fallback("Unknown business."))
+    if _client_rate_limited(_client_ip(request)):
+        return JSONResponse(status_code=429, content=_client_fallback("Too many messages, slow down a moment."))
+    try:
+        conn = _open_store()
+    except Exception:
+        return JSONResponse(status_code=503, content=_client_fallback("The store is unavailable."))
+    try:
+        tenant = db.resolve_tenant(conn, slug)
+    finally:
+        conn.close()
+    if tenant is None:
+        return JSONResponse(status_code=404, content=_client_fallback("Unknown business."))
+
+    history = [{"role": t.role, "content": t.content} for t in req.history]
+    try:
+        result = respond_client(history, business=tenant["name"], slug=slug)
+    except ConfigError as exc:
+        return JSONResponse(status_code=503, content=_client_fallback(str(exc)))
+    except GenerationError as exc:
+        return JSONResponse(status_code=502, content=_client_fallback(str(exc)))
+    except AssistantError as exc:
+        return JSONResponse(status_code=400, content=_client_fallback(str(exc)))
+
+    lead = result.lead if not req.lead_captured else None
+    if lead:
+        summary = lead["summary"] or ""
+        capture_lead(
+            problem_summary=("URGENT: " + summary) if lead["urgent"] else summary,
+            name=lead["name"],
+            email=lead["email"],
+            phone=lead["phone"],
+            source="assistant",
+            tenant_slug=slug,
+        )
+        notify.email_lead(tenant, lead, history + [{"role": "assistant", "content": result.reply}])
+
+    return JSONResponse(content={"reply": result.reply, "in_corpus": result.in_corpus, "lead": lead})
+
+
 @app.post("/contact")
 def contact(req: ContactRequest) -> JSONResponse:
     # Pydantic already rejected malformed/empty/oversized fields with a 422 before
@@ -223,6 +336,9 @@ _DUMMY_PASSWORD_HASH = hash_password("timing-equalizer-not-a-real-account")
 class AdminLoginRequest(BaseModel):
     email: str
     password: str
+    # Which business's admin is signing in (Brick 4b). Email is unique only WITHIN a tenant,
+    # so the login names its workspace; PGT tenant zero when omitted.
+    workspace: str = PGT_TENANT_SLUG
 
 
 def _open_store() -> db.psycopg.Connection:
@@ -234,10 +350,12 @@ def _open_store() -> db.psycopg.Connection:
 
 
 def require_admin(request: Request) -> dict:
-    """FastAPI dependency: admit only a request carrying a valid session cookie for THIS
-    deploy's tenant (PGT). The session-layer wall — session.tenant_id == the resolved
-    tenant id — is enforced here (port of Tinker's session-guard). Raises 401 otherwise,
-    503 if the store/secret is unavailable."""
+    """FastAPI dependency: admit only a request carrying a valid session cookie, and scope
+    it to the ONE tenant that session was signed for. The tenant comes from the HMAC-signed
+    session (it cannot be forged or edited), every route then reads only ctx["tenant"]["id"]
+    (F6 filters), and the admin must still exist inside that tenant. Since Brick 4b the
+    engine serves client tenants too, so the wall is "a session sees only its own tenant",
+    not "only PGT". Raises 401 otherwise, 503 if the store/secret is unavailable."""
     token = request.cookies.get(ADMIN_COOKIE)
     if not token:
         raise HTTPException(status_code=401, detail="Not signed in.")
@@ -253,8 +371,8 @@ def require_admin(request: Request) -> dict:
     except Exception:
         raise HTTPException(status_code=503, detail="The store is unavailable.")
     try:
-        tenant = db.resolve_tenant(conn, PGT_TENANT_SLUG)
-        # The session-layer wall: a cookie minted for another tenant is inert here.
+        tenant = db.get_tenant_by_id(conn, session.tenant_id)
+        # The session-layer wall: the session's own tenant, or nothing.
         if tenant is None or session.tenant_id != str(tenant["id"]):
             raise HTTPException(status_code=401, detail="Session invalid for this workspace.")
         admin = find_admin_by_id(conn, tenant["id"], session.admin_id)
@@ -272,9 +390,11 @@ def admin_login(req: AdminLoginRequest) -> JSONResponse:
     except Exception:
         return JSONResponse(status_code=503, content={"ok": False, "error": "The store is unavailable."})
     try:
-        tenant = db.resolve_tenant(conn, PGT_TENANT_SLUG)
+        workspace = req.workspace.strip().lower()
+        tenant = db.resolve_tenant(conn, workspace) if corpus.valid_slug(workspace) else None
         if tenant is None:
-            return JSONResponse(status_code=503, content={"ok": False, "error": "No workspace configured."})
+            # Same answer as a wrong password: never reveal which workspaces exist.
+            return JSONResponse(status_code=401, content={"ok": False, "error": "Invalid email or password."})
         account = find_admin_by_email(conn, tenant["id"], req.email)
     finally:
         conn.close()
@@ -456,6 +576,13 @@ def admin_page() -> FileResponse:
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(str(config.STATIC_DIR / "index.html"))
+
+
+@app.get("/client-widget.js")
+def client_widget() -> FileResponse:
+    """The drop-in chat for a client's own website (Brick 4b): <script src=".../client-widget.js"
+    data-tenant="<slug>" ...>. Talks to /t/<slug>/chat."""
+    return FileResponse(str(config.STATIC_DIR / "client-widget.js"), media_type="application/javascript")
 
 
 @app.get("/widget.js")

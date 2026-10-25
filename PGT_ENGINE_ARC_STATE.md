@@ -6,6 +6,62 @@ load-bearing (F5).
 
 ---
 
+## BRICK 4b — Client tenants (a paying local business is a tenant) — **LANDED 2026-10-25 (code + tests); live proof below**
+
+**Session:** 2026-10-25 · Opus 5.5 · founder GO (remote): "i approve any and all that you can you
+handle without me at the box". Why now: founder near the financial brink, goal ~$300/mo from local
+clients ($69 build + $99/mo). The demos sold things a client could not get; this makes the core
+deliverable real: 24/7 grounded answers on the client's site, every lead stored under that client
+and emailed to its owner, and the owner's own login to see them. **Inserted ahead of B5b/B6/B7 by
+founder ruling.** Text alerts deliberately NOT built (F3: Twilio = recurring cost + founder-made
+account + A2P registration); email only until a client is paying.
+
+### What was built
+- `app/db_schema.py` — additive, idempotent: `tenant.notify_email` (directory row: the owner's alert
+  address, NULL for PGT) and `lead.phone`. **No new scoped table** (so no new RLS red control owed;
+  `lead`'s existing control in test_tenant_wall.py still passes).
+- `app/db.py` — `resolve_tenant` returns `notify_email`; NEW `get_tenant_by_id` (directory read; a
+  malformed id is None).
+- `app/leads.py` — `phone` through `create_lead`/`capture_lead`/`list_leads` (F6 tag/filter unchanged).
+  The capture seam's per-slug resolution (built in B2 "for later bricks") is now used.
+- `app/corpus.py` + `config.TENANTS_CORPUS_DIR` — profile `tenant:<slug>` → `corpus_tenants/<slug>/`.
+  ⚠ LOAD-BEARING: `valid_slug` (`^[a-z0-9]+(-[a-z0-9]+)*$`) is checked before a slug becomes a path.
+- `app/assistant.py` — `respond_client` + `_client_system_prompt`: rails PORTED from the proven
+  vertical-demos prompt (grounded / honest-or-quiet / capture-the-lead; never "booked", never an ETA,
+  no card data) in the engine's JSON convention. A lead counts only with a name AND a phone or email.
+- `app/notify.py` (NEW) — `email_lead`: Resend, to the tenant's `notify_email`, cc PGT `LEAD_INBOX`,
+  from `CLIENT_LEAD_FROM` (verified PGT domain). Best-effort, never raises.
+- `app/main.py` — `POST /t/{slug}/chat` (404 unknown/malformed slug, per-IP rate limit ported from
+  vertical-demos, one lead per conversation via `lead_captured`, urgent → `URGENT: ` prefix + subject);
+  `/t/` CORS layer answering any origin (no credentials ride on it; every other route keeps the
+  allow-list); `GET /client-widget.js`; admin login takes `workspace` (default `pgt`; unknown
+  workspace = same 401 as a wrong password). ⚠ LOAD-BEARING CHANGE: `require_admin` now scopes to
+  the tenant in the HMAC-signed session (`get_tenant_by_id`) instead of hardcoding PGT; the wall is
+  "a session sees only its own tenant", and the admin must still exist inside that tenant.
+- `static/client-widget.js` (NEW) — the drop-in for a client's own site, ported from the pgt-demos
+  overlay chat (a020999). `static/admin.html` — `?w=<slug>` workspace + Phone column.
+- `scripts/add_tenant.py` (NEW, idempotent upsert); `scripts/seed_admin.py` takes `TENANT_SLUG`.
+- `corpus_tenants/pgt-sample-plumbing/` — a clearly-labeled SAMPLE business for live proof and demos.
+
+### Proof — transcribed (portable PG 16.4, port 54329; app connects as superuser = RLS bypassed, the Neon condition)
+- **82 passed** (was 68: +14 in `tests/test_client_tenants.py`). Every isolation assertion holds on
+  F6 filters alone, because the app's connection bypasses RLS.
+- **Mutations watched red, then restored (7/7 RED):** A seam writes to PGT not the slug → lead test
+  FAILED; B login ignores workspace → owner-workspace test FAILED; C guard skips admin-in-tenant →
+  hand-minted cross-tenant session test FAILED; D `lead_captured` ignored → one-lead test FAILED;
+  E `/t/` CORS layer removed → origin test FAILED; F slug check removed → path test FAILED; G alert
+  not sent to the owner → lead/email test FAILED. Restored → 82 passed.
+
+### What I did NOT do
+- SMS/text alerts (F3, founder account needed). Lead status editing. Per-tenant branding of /admin.
+- Seeded no admin password for any tenant (credentials are the founder's to choose).
+
+### Owed
+- Founder, per client: write `corpus_tenants/<slug>/` from their real info, `add_tenant` with their
+  alert email, `seed_admin` with `TENANT_SLUG`, paste the widget tag on their site.
+- If Resend rejects `leads@precisionguessworktech.com` on this service's key, verify the domain on that
+  Resend account (alerts still store the lead; only the email fails, logged).
+
 ## BRICK 5 — Availability store (admin edits the schedule; it lives as data) — **LANDED 2026-10-24**
 
 **Session:** 2026-10-24 · Opus 5.5 · founder GO "Yes, build Brick 5". Founder framing, verbatim:
