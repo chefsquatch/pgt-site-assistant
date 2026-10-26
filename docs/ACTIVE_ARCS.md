@@ -61,7 +61,7 @@ brick-one red-control proven on a **Neon test branch**.
   booking horizon is **2 weeks** (= `open_windows(days=14)`). PGT's flavor: email captured
   first, then offer real call-back times, confirm, founder calls. Clone flavor: plain slot booking.
   Plus (STEP-0 2026-10-26): booking is on only for tenants with weekly hours. **LANDED + DEPLOYED.** PGT hours
-  (Mon-Fri 10-16) entered; real-model booking PROVEN LIVE (founder confirmed the booking email; test block + lead deleted by exact id, slot open again). Tuning: offer 2-3 slots, not the full list. Open: no minimum notice, no booking abuse cap, no
+  (Mon-Fri 10-16) entered; real-model booking PROVEN LIVE (founder confirmed the booking email; test block + lead deleted by exact id, slot open again). Tuning DONE 2026-10-26 (`5f6d9b6`): at most three times per reply + no em dashes, live-verified on a real-model chat (3 times offered, nothing booked). Open: no minimum notice, no booking abuse cap, no
   server check on time/"booked" prose outside booking turns.
 - **B7:** `RESEND_API_KEY` + verified sender domain (already owed).
 - **B4b client alerts:** DONE 2026-10-26 — `CLIENT_RESEND_API_KEY` set on Render (verified-domain
