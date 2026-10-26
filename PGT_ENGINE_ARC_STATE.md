@@ -6,7 +6,7 @@ load-bearing (F5).
 
 ---
 
-## BRICK 6 — The assistant reads availability deterministically + books — **LANDED + DEPLOYED 2026-10-26** (real-model flow still unproven)
+## BRICK 6 — The assistant reads availability deterministically + books — **LANDED + DEPLOYED + PROVEN LIVE 2026-10-26**
 
 **Session:** 2026-10-26 · Opus 5.5 · founder GO on the STEP-0 shape, plus the gating ruling
 "booking only for tenants that have entered weekly hours" (agreed). Rulings carried from
@@ -81,6 +81,20 @@ email first, then a confirmed call-back time, and Les calls; clone flavor = plai
 - Pushed `b1aed1c`; Render deploy `live` 14:32:07Z. Boot log: `init_db` "schema + RLS wall applied" at
   14:32:01 (the CHECK widen + booking index reached Neon), Uvicorn up 14:32:04, no errors. `/health` ok
   throughout. No booking can happen yet: PGT has no weekly hours entered, so booking is off for it.
+
+### Live proof (2026-10-26, real model, production)
+- PGT hours entered as data via a Render one-off job (`job-dbfncqmi0phs73bacvc0`, founder GO; auto mode had
+  blocked remote-shell writes, and `render ssh` needs a TTY, so one-off jobs are the working rail): Mon-Fri
+  10:00-16:00 America/Detroit → 116 open slots.
+- Real chat on prod `/chat` (5 turns): visitor asked for a call → the assistant asked for EMAIL FIRST, then
+  name + phone → listed real slots → asked which Wednesday → `booking: 2026-10-28T14:00`, reply = the
+  server's "Done, you're booked: Les will call you at 810-555-0100 on Wed Oct 28, 2:00 PM EDT…".
+- Verified in Neon (read-only job `job-dbfnudnavr4c73dh94ug`): one `booking` block at 18:00Z, the slot gone
+  from `open_slots`, lead `Call-back booked for Wed Oct 28, 2:00 PM EDT. …`. No errors in the service log.
+- TEST DATA in prod (delete after founder confirms the email): block `6e53527a-bc4b-4a5a-a8ab-b4826ec39bea`,
+  lead `09b70f25-ea4e-4d60-be8c-24db8c63192c` ("Booking Test (Claude)", 555 number).
+- Observed, slated for tuning (prompt-only, not bugs in the booking rail): the model listed ALL two weeks of
+  slots instead of 2-3; replies still contain em dashes despite the VOICE rule (pre-existing, not B6).
 
 ### Owed / next
 - **Founder-hands, after deploy:** enter PGT's real call-back hours on the Availability tab (booking turns

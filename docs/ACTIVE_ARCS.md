@@ -27,7 +27,7 @@ brick-one red-control proven on a **Neon test branch**.
 | 4b | Client tenants: a business is a tenant (own knowledge, own leads, owner alert email, owner login, embeddable widget) | 1,2,3,4 | **LANDED 2026-10-25** (82 passed; 7 mutations red; founder-inserted ahead of 5b/6/7; email alerts only, SMS deferred under F3) |
 | 5 | Availability store (admin edits schedule/availability) | 1 | **LANDED 2026-10-24** (68 passed; 3 walled tables + red control ×3 + F6 mutations red; deterministic `open_windows()` DST-safe; admin Availability tab; ⚠ NOT deployed: Neon `init_db` owed before the deploy) |
 | 5b | Calendar sync (business's busy times → `availability_block` source='calendar') | 5 | SLATED (founder: engine must do "both"; Google OAuth = founder setup) |
-| 6 | Assistant reads availability deterministically + books | 5 | **LANDED 2026-10-26** (106 passed; 8 mutations red; 30-min fixed-grid slots, instant `source='booking'` block, unique index vs double-booking; model proposes, store decides, server writes the reply; booking only when hours exist; DEPLOYED 2026-10-26; real-model flow unproven) |
+| 6 | Assistant reads availability deterministically + books | 5 | **LANDED 2026-10-26** (106 passed; 8 mutations red; 30-min fixed-grid slots, instant `source='booking'` block, unique index vs double-booking; model proposes, store decides, server writes the reply; booking only when hours exist; DEPLOYED + PROVEN LIVE 2026-10-26 on a real-model chat) |
 | 7 | Human-fork at the honest edges | 2,6 | SLATED |
 
 **One brick per cleared session. Prove it, record it, stop.**
@@ -60,9 +60,8 @@ brick-one red-control proven on a **Neon test branch**.
   INSTANTLY (no approval step; writes an `availability_block`); slots are **30 minutes**;
   booking horizon is **2 weeks** (= `open_windows(days=14)`). PGT's flavor: email captured
   first, then offer real call-back times, confirm, founder calls. Clone flavor: plain slot booking.
-  Plus (STEP-0 2026-10-26): booking is on only for tenants with weekly hours. **LANDED + DEPLOYED.** Owed:
-  enter PGT's real call-back hours; one real chat through to a booked call-back (the real-model
-  flow is unproven, all route tests stub the model). Open: no minimum notice, no booking abuse cap, no
+  Plus (STEP-0 2026-10-26): booking is on only for tenants with weekly hours. **LANDED + DEPLOYED.** PGT hours
+  (Mon-Fri 10-16) entered; real-model booking PROVEN LIVE. Tuning: offer 2-3 slots, not the full list. Open: no minimum notice, no booking abuse cap, no
   server check on time/"booked" prose outside booking turns.
 - **B7:** `RESEND_API_KEY` + verified sender domain (already owed).
 - **B4b client alerts:** DONE 2026-10-26 — `CLIENT_RESEND_API_KEY` set on Render (verified-domain
