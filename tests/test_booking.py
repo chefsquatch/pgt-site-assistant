@@ -316,3 +316,21 @@ def test_pgt_without_hours_is_the_email_only_assistant(env, monkeypatch):
     assert body["booking"] is None and body["reply"] == "Email Les."
     assert "CALL-BACK" not in seen[0]
     assert seen[0] == assistant._system_prompt()  # byte-identical to the pre-brick prompt
+
+
+# --- tuning (2026-10-26 live proof): at most three times per reply, no em dashes ---------
+
+def test_booking_prompts_cap_times_at_three():
+    slots = "Tue Oct 27 (EDT): 2026-10-27T10:00, 2026-10-27T10:30"
+    assert "Never list more than three times" in assistant._pgt_callback_section(slots)
+    assert "Never list more than three times" in assistant._client_booking_rules("Acme", slots)
+
+
+def test_pgt_reply_has_no_em_dashes(monkeypatch):
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(
+        assistant, "_call_model",
+        lambda system, turns: '"reply": "Sure \u2014 Les can call.", "in_corpus": false, "handoff_ready": false}',
+    )
+    r = assistant.respond([{"role": "user", "content": "hi"}])
+    assert "\u2014" not in r.reply and r.reply == "Sure, Les can call."

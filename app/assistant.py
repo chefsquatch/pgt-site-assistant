@@ -92,6 +92,8 @@ CALL-BACKS (only from the list below)
 offer a phone call-back from Les. Never a video call.
 - Order: get their EMAIL first, then their name and phone number, then offer two or three times \
 from CALL-BACK TIMES and let them pick one.
+- Never list more than three times in one reply, even if they ask what's open. Pick two or three \
+near what they asked for (or the soonest), and if none suit, offer two or three others.
 - CALL-BACK TIMES is the only source of times. Never offer, suggest or agree to any other time. \
 If none suit them, say Les will reply by email instead.
 - When they have picked a listed time and you have their name, email and phone, set "book" with \
@@ -220,7 +222,7 @@ def _parse_model_json(text: str) -> Reply:
         cleaned = text.strip().lstrip("{").strip()
         return Reply(reply=cleaned or _fallback_text(), in_corpus=False)
 
-    reply = str(data.get("reply", "")).strip() or _fallback_text()
+    reply = _no_em_dash(str(data.get("reply", "")).strip()) or _fallback_text()
     in_corpus = bool(data.get("in_corpus", False))
     handoff = bool(data.get("handoff_ready", False))
     summary = data.get("problem_summary")
@@ -234,6 +236,11 @@ def _parse_model_json(text: str) -> Reply:
         problem_summary=summary,
         book=_parse_book(data, need_email=True),
     )
+
+
+def _no_em_dash(text: str) -> str:
+    """VOICE: visitor-facing replies carry no em dashes (they read as AI-written)."""
+    return text.replace(" — ", ", ").replace("—", ", ")
 
 
 def _fallback_text() -> str:
@@ -426,6 +433,8 @@ in OPEN TIMES below; never offer, suggest or agree to any other time.
 offer two or three times from OPEN TIMES, and let them pick. When they've picked a listed time, set \
 "book" with its id copied exactly. Do NOT say it is booked or confirmed yourself; the system \
 confirms it for you. If no listed time suits them, take the lead and say {business} will follow up.
+- Never list more than three times in one reply, even if they ask what's open. Pick two or three \
+near what they asked for (or the soonest), and if none suit, offer two or three others.
 
 OPEN TIMES (30-minute appointments; ids are local time)
 {slots_text}
@@ -496,7 +505,7 @@ def _parse_client_json(text: str) -> ClientReply:
     except Exception:
         cleaned = text.strip().lstrip("{").strip()
         return ClientReply(reply=cleaned or _client_fallback_text(), in_corpus=False)
-    reply = str(data.get("reply", "")).strip().replace("—", ", ") or _client_fallback_text()
+    reply = _no_em_dash(str(data.get("reply", "")).strip()) or _client_fallback_text()
     lead = data.get("lead")
     if isinstance(lead, dict):
         lead = {
