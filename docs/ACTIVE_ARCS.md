@@ -56,6 +56,10 @@ brick-one red-control proven on a **Neon test branch**.
   hours as data. PGT's model (founder 2026-10-24): email first, then a confirmed call-back time —
   no video, phone only as a call-back.
 - **B4b:** per client: `corpus_tenants/<slug>/` + `scripts.add_tenant` + `scripts.seed_admin` (TENANT_SLUG) + widget tag on their site. SMS alerts = founder decision (Twilio account, cost) once a client pays.
+- **B6 (founder rulings 2026-10-26, settled — don't re-ask):** a booking blocks the slot
+  INSTANTLY (no approval step; writes an `availability_block`); slots are **30 minutes**;
+  booking horizon is **2 weeks** (= `open_windows(days=14)`). PGT's flavor: email captured
+  first, then offer real call-back times, confirm, founder calls. Clone flavor: plain slot booking.
 - **B7:** `RESEND_API_KEY` + verified sender domain (already owed).
 - **B4b client alerts:** DONE 2026-10-26 — `CLIENT_RESEND_API_KEY` set on Render (verified-domain
   key from tinker), live lead test emailed (founder confirmed receipt).
