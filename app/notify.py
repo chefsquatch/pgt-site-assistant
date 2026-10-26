@@ -28,6 +28,12 @@ def lead_email_text(business: str, lead: dict, transcript: list[dict]) -> str:
         f"Email:   {lead.get('email') or ''}",
         f"Wants:   {lead.get('summary') or ''}",
         f"Urgent:  {'YES' if lead.get('urgent') else 'no'}",
+    ]
+    if lead.get("booking"):
+        # Brick 6: the slot is already blocked in the calendar; the admin cancels by
+        # deleting its block on the Availability tab.
+        lines.append(f"BOOKED:  {lead['booking']} (already blocked on your calendar)")
+    lines += [
         "",
         "Conversation:",
     ]
@@ -50,10 +56,16 @@ def email_lead(tenant: dict, lead: dict, transcript: list[dict]) -> bool:
     if not to:
         return False
     urgent = "URGENT " if lead.get("urgent") else ""
+    who = lead.get("name") or "a customer"
+    subject = (
+        f"Booked {lead['booking']}: {who} ({tenant.get('name')})"
+        if lead.get("booking")
+        else f"{urgent}New lead: {who} ({tenant.get('name')})"
+    )
     payload = {
         "from": config.CLIENT_LEAD_FROM,
         "to": to,
-        "subject": f"{urgent}New lead: {lead.get('name') or 'a customer'} ({tenant.get('name')})",
+        "subject": subject,
         "text": lead_email_text(tenant.get("name") or "", lead, transcript),
     }
     if cc:

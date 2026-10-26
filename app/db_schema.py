@@ -106,14 +106,15 @@ CREATE TABLE IF NOT EXISTS availability_window (
 CREATE INDEX IF NOT EXISTS availability_window_tenant_idx ON availability_window (tenant_id);
 
 -- Time that is NOT available, as absolute instants. source = who wrote it: 'manual'
--- (the admin) or 'calendar' (a future sync writing busy times into this same table).
+-- (the admin), 'calendar' (a future sync writing busy times into this same table), or
+-- 'booking' (Brick 6: the assistant booked this slot for a customer).
 CREATE TABLE IF NOT EXISTS availability_block (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id   uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
     starts_at   timestamptz NOT NULL,
     ends_at     timestamptz NOT NULL,
     reason      text,
-    source      text NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'calendar')),
+    source      text NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'calendar', 'booking')),
     created_at  timestamptz NOT NULL DEFAULT now(),
     CHECK (ends_at > starts_at)
 );
@@ -127,6 +128,18 @@ CREATE INDEX IF NOT EXISTS availability_block_tenant_idx ON availability_block (
 ALTER TABLE tenant ADD COLUMN IF NOT EXISTS notify_email text;
 -- A local-business lead is a name and a phone number far more often than an email.
 ALTER TABLE lead ADD COLUMN IF NOT EXISTS phone text;
+
+-- Bookings (Brick 6, 2026-10-26). A booking is a source='booking' block. CREATE TABLE IF
+-- NOT EXISTS never revisits an existing table's CHECK, so widen it explicitly (drop + add
+-- is idempotent; the name is Postgres's default for the column's CHECK).
+ALTER TABLE availability_block DROP CONSTRAINT IF EXISTS availability_block_source_check;
+ALTER TABLE availability_block ADD CONSTRAINT availability_block_source_check
+    CHECK (source IN ('manual', 'calendar', 'booking'));
+-- ⚠ LOAD-BEARING: one booking per slot. Slots sit on a fixed 30-minute grid
+-- (availability.compute_slots), so overlapping bookings always share a start; this index
+-- is what makes the second of two simultaneous bookings fail instead of double-booking.
+CREATE UNIQUE INDEX IF NOT EXISTS availability_booking_slot_uq
+    ON availability_block (tenant_id, starts_at) WHERE source = 'booking';
 """
 
 

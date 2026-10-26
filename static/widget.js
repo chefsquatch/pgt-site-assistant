@@ -65,6 +65,7 @@
 
   var history = []; // [{role, content}]
   var busy = false;
+  var booked = false; // Brick 6: set once the server confirms a call-back booking
 
   // Wake the service on page load (fire-and-forget). On a spun-down free-tier
   // instance this starts the ~cold start early, so by the time a visitor opens
@@ -398,7 +399,7 @@
     fetch(API + "/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ history: history }),
+      body: JSON.stringify({ history: history, booked: booked }),
     })
       .then(function (r) {
         return r.json().then(function (d) { return { ok: r.ok, data: d }; });
@@ -413,7 +414,9 @@
         addBubble("bot", d.reply);
         history.push({ role: "assistant", content: d.reply });
         if (d.in_corpus) addGrounded();
-        if (d.handoff_ready && d.problem_summary) addHandoff(d.problem_summary);
+        // A booking's confirmation IS the reply (written by the server from the store).
+        if (d.booking) booked = true;
+        else if (d.handoff_ready && d.problem_summary) addHandoff(d.problem_summary);
       })
       .catch(function () {
         hideTyping();

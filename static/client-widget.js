@@ -86,7 +86,7 @@
     document.body.appendChild(panel);
 
     var history = [{ role: "assistant", content: cfg.greeting }];
-    var opened = false, busy = false, leadShown = false;
+    var opened = false, busy = false, leadShown = false, booked = false;
 
     function add(cls, text) { var m = el("div", "pgtc-m " + cls, text); log.appendChild(m); log.scrollTop = log.scrollHeight; return m; }
     function note(text) { var n = el("div", "pgtc-note", text); log.appendChild(n); log.scrollTop = log.scrollHeight; }
@@ -121,7 +121,7 @@
       fetch(API + "/t/" + encodeURIComponent(cfg.tenant) + "/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ history: history, lead_captured: leadShown }),
+        body: JSON.stringify({ history: history, lead_captured: leadShown, booked: booked }),
       })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(function (res) {
@@ -129,7 +129,9 @@
           if (!res.ok || !res.j.reply) { history.pop(); note((res.j && res.j.reply) || "Something went wrong. Try again."); return; }
           add("pgtc-bot", res.j.reply);
           history.push({ role: "assistant", content: res.j.reply });
-          if (res.j.lead) showLead(res.j.lead);
+          // A booking's confirmation IS the reply (written by the server from the store).
+          if (res.j.booking) { booked = true; leadShown = true; }
+          else if (res.j.lead) showLead(res.j.lead);
         })
         .catch(function () { typing.remove(); history.pop(); note("Couldn't connect. Check your connection and try again."); })
         .then(function () { busy = false; send.disabled = false; input.focus(); });

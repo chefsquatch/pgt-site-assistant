@@ -12,9 +12,9 @@ with 0 = Sunday, and times are "HH:mm" local to the business. Three tables:
     default timezone (PGT is in Flint, MI).
   * availability_window   — recurring weekly hours: (weekday, start, end), local time.
   * availability_block    — time that is NOT available (a day off, an appointment),
-    as absolute instants. `source` says who wrote it: 'manual' (the admin, this brick)
-    or 'calendar' (a future calendar-sync brick writing the business's busy times into
-    this SAME table). Either way the assistant reads one store — sync is a writer, never
+    as absolute instants. `source` says who wrote it: 'manual' (the admin, this brick),
+    'calendar' (a future calendar-sync brick writing the business's busy times into
+    this SAME table), or 'booking' (Brick 6: a slot the assistant booked). Either way the assistant reads one store — sync is a writer, never
     a second source of truth.
 
 Every function goes through `with_tenant()` (F1) AND carries an explicit `tenant_id`
@@ -34,7 +34,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from . import db
 
 DEFAULT_TIMEZONE = "America/Detroit"
-BLOCK_SOURCES = ("manual", "calendar")
+BLOCK_SOURCES = ("manual", "calendar", "booking")
 # How far ahead open_windows() will compute in one call — bounds the work per request.
 MAX_DAYS = 62
 
@@ -317,3 +317,112 @@ def open_windows(
     )
     blocks = [(b["starts_at"], b["ends_at"]) for b in list_blocks(conn, tenant_id, overlapping=span)]
     return compute_open_windows(list_windows(conn, tenant_id), blocks, tz_name, start_date, days)
+
+
+# --- Brick 6: slots + booking ---------------------------------------------------------
+# Founder rulings 2026-10-26: slots are 30 minutes, the horizon is 2 weeks, and a booking
+# blocks its slot INSTANTLY (no approval step) by writing an availability_block with
+# source='booking'. So a booking is just another block in the one store: it disappears
+# from open_windows() the moment it is written, and the admin cancels one by deleting
+# its block.
+
+SLOT_MINUTES = 30
+BOOKING_DAYS = 14
+_SLOT = timedelta(minutes=SLOT_MINUTES)
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+class SlotUnavailable(AvailabilityError):
+    """The slot asked for is not open (taken, past, never existed). Never booked."""
+
+
+@dataclass(frozen=True)
+class Slot:
+    start: datetime  # timezone-aware, in the tenant's zone
+    end: datetime
+
+    @property
+    def id(self) -> str:
+        """The handle the assistant copies back: local wall time 'YYYY-MM-DDTHH:MM'."""
+        return self.start.strftime("%Y-%m-%dT%H:%M")
+
+    @property
+    def label(self) -> str:
+        """What a person reads: 'Tue Oct 27, 10:00 AM EDT'. Built by hand because the
+        no-padding strftime flags differ between platforms."""
+        s = self.start
+        hour = s.hour % 12 or 12
+        return f"{s:%a %b} {s.day}, {hour}:{s:%M} {'AM' if s.hour < 12 else 'PM'} {s:%Z}"
+
+
+def compute_slots(open_windows_: Iterable[OpenWindow], now: datetime) -> list[Slot]:
+    """Pure: every 30-minute slot that fits wholly inside an open window and starts after
+    `now`.
+
+    ⚠ LOAD-BEARING: slots sit on a FIXED grid (:00 and :30), aligned to absolute time, not
+    to each window's start. That makes "two bookings overlap" the same thing as "two
+    bookings share a start", which is what the unique index on booking starts enforces
+    (availability_booking_slot_uq) so two people can never book one slot. A window that
+    starts off the grid (9:15) loses its partial first cell. Absolute alignment equals the
+    local :00/:30 grid for every zone whose offset is a whole half hour (all US zones), and
+    it stays right across DST because it never reads a wall clock.
+    """
+    out: list[Slot] = []
+    for w in open_windows_:
+        tz = w.start.tzinfo
+        elapsed = w.start.astimezone(timezone.utc) - _EPOCH
+        t = w.start.astimezone(timezone.utc) + (-elapsed % _SLOT)  # round up onto the grid
+        while t + _SLOT <= w.end:
+            if t > now:
+                out.append(Slot(t.astimezone(tz), (t + _SLOT).astimezone(tz)))
+            t += _SLOT
+    return out
+
+
+def open_slots(
+    conn: db.psycopg.Connection,
+    tenant_id: Any,
+    *,
+    now: datetime | None = None,
+) -> list[Slot]:
+    """The tenant's bookable slots over the next two weeks, read from the store (F2).
+    Empty when the tenant has no weekly hours, which keeps booking off for that tenant."""
+    tz = ZoneInfo(get_timezone(conn, tenant_id))
+    now = now or datetime.now(timezone.utc)
+    wins = open_windows(conn, tenant_id, start_date=now.astimezone(tz).date(), days=BOOKING_DAYS)
+    return compute_slots(wins, now)
+
+
+def book_slot(
+    conn: db.psycopg.Connection,
+    tenant_id: Any,
+    slot_id: str,
+    *,
+    reason: str | None,
+    now: datetime | None = None,
+) -> Slot:
+    """Book one slot, instantly, by writing a source='booking' block. Raises
+    SlotUnavailable unless `slot_id` is one of the tenant's open slots RIGHT NOW: the
+    assistant only ever proposes an id, and the store decides. A concurrent booking of the
+    same slot loses at the unique index and is reported the same way.
+
+    `conn` must be autocommit (the request-path contract), so the block commits on return.
+    """
+    slot = next((s for s in open_slots(conn, tenant_id, now=now) if s.id == slot_id), None)
+    if slot is None:
+        raise SlotUnavailable(f"slot {slot_id!r} is not open")
+    try:
+        add_block(conn, tenant_id, starts_at=slot.start, ends_at=slot.end, reason=reason, source="booking")
+    except db.psycopg.errors.UniqueViolation:
+        raise SlotUnavailable(f"slot {slot_id!r} was just booked")
+    return slot
+
+
+def slots_for_prompt(slots: list[Slot], limit: int = 120) -> str:
+    """The open slots as compact text for the assistant, one line per day:
+    'Tue Oct 27: 2026-10-27T09:00, 2026-10-27T09:30'. Capped so a wide-open calendar
+    can't flood the prompt; the cap keeps the SOONEST slots."""
+    days: dict[str, list[str]] = {}
+    for s in slots[:limit]:
+        days.setdefault(f"{s.start:%a %b} {s.start.day} ({s.start:%Z})", []).append(s.id)
+    return "\n".join(f"{day}: {', '.join(ids)}" for day, ids in days.items())

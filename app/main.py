@@ -4,7 +4,7 @@ Endpoints:
   GET  /            -> a standalone demo page hosting the widget (static/index.html)
   GET  /widget.js   -> the embeddable widget script (served with permissive CORS)
   GET  /health      -> liveness + how many corpus sections are loaded
-  POST /chat        -> {history:[{role,content}]} -> {reply,in_corpus,handoff_ready,
+  POST /chat        -> {history:[{role,content}], booked} -> {booking, reply, in_corpus, handoff_ready,
                         problem_summary, sources, founder_email}
 
 Every expected failure (missing key, API failure, rate limit, empty message) is
@@ -24,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 
-from . import availability, config, corpus, db, notify
+from . import availability, booking, config, corpus, db, notify
 from .admins import find_admin_by_email, find_admin_by_id
 from .assistant import (
     AssistantError,
@@ -103,6 +103,8 @@ class Turn(BaseModel):
 
 class ChatRequest(BaseModel):
     history: list[Turn]
+    # Brick 6: the widget sets this once a booking was made, so one conversation books once.
+    booked: bool = False
 
 
 def _email_fallback(message: str) -> dict:
@@ -135,8 +137,11 @@ def health() -> dict:
 @app.post("/chat")
 def chat(req: ChatRequest) -> JSONResponse:
     history = [{"role": t.role, "content": t.content} for t in req.history]
+    # Brick 6: PGT's open call-back slots, from the store (F2). Best-effort: no store, no
+    # hours, or already booked = no slots, and the assistant stays email-only as before.
+    tenant, slots = _pgt_booking_context() if not req.booked else (None, [])
     try:
-        result = respond(history)
+        result = respond(history, availability.slots_for_prompt(slots) or None)
     except ConfigError as exc:
         return JSONResponse(status_code=503, content=_email_fallback(str(exc)))
     except GenerationError as exc:
@@ -147,11 +152,23 @@ def chat(req: ChatRequest) -> JSONResponse:
     # System of record: when the assistant has qualified a visitor and summarized their
     # problem, persist it as a lead (source='assistant'). Best-effort — capture_lead
     # never raises, so a store hiccup can't break the reply the visitor is waiting on.
-    if result.handoff_ready and result.problem_summary:
+    booked = None
+    if result.book and tenant and slots:
+        # The model proposed a slot; the store decides, and the reply is the store's answer.
+        outcome = booking.try_book(
+            tenant,
+            result.book,
+            summary=result.problem_summary,
+            transcript=history + [{"role": "assistant", "content": result.reply}],
+            pgt=True,
+        )
+        result.reply, booked = outcome.reply, outcome.slot
+    elif result.handoff_ready and result.problem_summary:
         capture_lead(problem_summary=result.problem_summary, source="assistant")
 
     return JSONResponse(
         content={
+            "booking": booking.slot_json(booked),
             "reply": result.reply,
             "in_corpus": result.in_corpus,
             "handoff_ready": result.handoff_ready,
@@ -160,6 +177,21 @@ def chat(req: ChatRequest) -> JSONResponse:
             "founder_email": config.FOUNDER_EMAIL,
         }
     )
+
+
+def _pgt_booking_context() -> tuple[dict | None, list]:
+    """PGT's tenant row and open slots, or (None, []) when the store is unset or down."""
+    try:
+        conn = _open_store()
+    except Exception:
+        return None, []
+    try:
+        tenant = db.resolve_tenant(conn, PGT_TENANT_SLUG)
+        return (tenant, booking.read_slots(conn, tenant["id"])) if tenant else (None, [])
+    except Exception:
+        return None, []
+    finally:
+        conn.close()
 
 
 def _tinker_fallback(message: str) -> dict:
@@ -227,6 +259,8 @@ class ClientChatRequest(BaseModel):
     history: list[Turn]
     # The widget sets this once it has shown a lead, so one conversation stores one lead.
     lead_captured: bool = False
+    # Brick 6: set once a booking was made, so one conversation books once.
+    booked: bool = False
 
 
 def _client_fallback(message: str) -> dict:
@@ -248,6 +282,8 @@ def client_chat(slug: str, req: ClientChatRequest, request: Request) -> JSONResp
         return JSONResponse(status_code=503, content=_client_fallback("The store is unavailable."))
     try:
         tenant = db.resolve_tenant(conn, slug)
+        # Brick 6: the business's open slots (F2). No weekly hours = no slots = booking off.
+        slots = booking.read_slots(conn, tenant["id"]) if tenant and not req.booked else []
     finally:
         conn.close()
     if tenant is None:
@@ -255,13 +291,40 @@ def client_chat(slug: str, req: ClientChatRequest, request: Request) -> JSONResp
 
     history = [{"role": t.role, "content": t.content} for t in req.history]
     try:
-        result = respond_client(history, business=tenant["name"], slug=slug)
+        result = respond_client(
+            history,
+            business=tenant["name"],
+            slug=slug,
+            slots_text=availability.slots_for_prompt(slots) or None,
+        )
     except ConfigError as exc:
         return JSONResponse(status_code=503, content=_client_fallback(str(exc)))
     except GenerationError as exc:
         return JSONResponse(status_code=502, content=_client_fallback(str(exc)))
     except AssistantError as exc:
         return JSONResponse(status_code=400, content=_client_fallback(str(exc)))
+
+    booked = None
+    if result.book and slots:
+        # The model proposed a slot; the store decides. A booking is recorded as its own
+        # lead (with the time) inside try_book, so the plain lead below is skipped for it.
+        outcome = booking.try_book(
+            tenant,
+            result.book,
+            summary=(result.lead or {}).get("summary"),
+            transcript=history + [{"role": "assistant", "content": result.reply}],
+            pgt=False,
+        )
+        result.reply, booked = outcome.reply, outcome.slot
+        if outcome.lead:
+            return JSONResponse(
+                content={
+                    "reply": result.reply,
+                    "in_corpus": result.in_corpus,
+                    "lead": None,
+                    "booking": booking.slot_json(booked),
+                }
+            )
 
     lead = result.lead if not req.lead_captured else None
     if lead:
@@ -276,7 +339,9 @@ def client_chat(slug: str, req: ClientChatRequest, request: Request) -> JSONResp
         )
         notify.email_lead(tenant, lead, history + [{"role": "assistant", "content": result.reply}])
 
-    return JSONResponse(content={"reply": result.reply, "in_corpus": result.in_corpus, "lead": lead})
+    return JSONResponse(
+        content={"reply": result.reply, "in_corpus": result.in_corpus, "lead": lead, "booking": None}
+    )
 
 
 @app.post("/contact")

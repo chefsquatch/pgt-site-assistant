@@ -6,6 +6,85 @@ load-bearing (F5).
 
 ---
 
+## BRICK 6 — The assistant reads availability deterministically + books — **LANDED 2026-10-26 (code + tests); NOT deployed**
+
+**Session:** 2026-10-26 · Opus 5.5 · founder GO on the STEP-0 shape, plus the gating ruling
+"booking only for tenants that have entered weekly hours" (agreed). Rulings carried from
+ACTIVE_ARCS (settled 2026-10-26): instant block, 30-minute slots, 2-week horizon; PGT flavor =
+email first, then a confirmed call-back time, and Les calls; clone flavor = plain slot booking.
+
+### What was built
+- `app/availability.py`: `Slot` (id = local `YYYY-MM-DDTHH:MM`, label `Tue Oct 27, 10:00 AM EDT`),
+  pure `compute_slots()` (30-minute cells wholly inside an open window, future only), `open_slots()`
+  (= `open_windows(days=14)` → slots, F2), `book_slot()` (the store decides: the id must be in
+  `open_slots()` RIGHT NOW, then `add_block(source='booking')`; a unique-index loss = `SlotUnavailable`),
+  `slots_for_prompt()` (one line per day, capped at the soonest 120). `BLOCK_SOURCES` += `'booking'`.
+- `app/db_schema.py`: additive + idempotent: the block `source` CHECK widened to include `'booking'`
+  (explicit DROP/ADD, because CREATE IF NOT EXISTS never revisits a CHECK), plus the partial unique index
+  `availability_booking_slot_uq (tenant_id, starts_at) WHERE source='booking'`. **No new scoped table.**
+- `app/booking.py` (NEW): best-effort seam like the lead seam. `read_slots()` returns [] on any failure;
+  `try_book()` books, records the booking as a lead (`Call-back booked for …` / `Appointment booked for …`),
+  emails the owner (PGT → LEAD_INBOX) and **writes the visitor's reply from what the store did**.
+  Never raises.
+- `app/assistant.py`: `book` proposal in both JSON shapes (`_parse_book`: slot + name + phone, and PGT also
+  requires an email, the "email first" ruling). PGT gets a CALL-BACKS section and the client gets OPEN TIMES
+  rules, both **only when slots exist**. With no slots, both prompts are byte-identical to the pre-brick
+  prompts (checked against HEAD, and test-pinned for PGT).
+- `app/main.py`: `/chat` + `/t/<slug>/chat` read slots before the model call, take `booked` (one booking per
+  conversation), and return `booking: {slot,label,start}|null`. On a booking turn the model's own text is
+  REPLACED by the store's answer.
+- `app/notify.py`: a `BOOKED:` line and a `Booked <time>: <name>` subject for booking alerts.
+- `static/widget.js`, `static/client-widget.js`: send `booked`, set it from `booking`. The confirmation
+  is the reply bubble (the server wrote it).
+
+### Proof, transcribed (portable PG 16.4, port 54329)
+- **106 passed** (was 82; +24 in `tests/test_booking.py`).
+- **Mutations watched red, then restored (8/8 RED):** M1 book_slot trusts the model's id → 7 failed
+  (every invented-slot case + the route); M2 no unique index → 2 failed (race + index tests); M3 block
+  read drops its tenant_id filter → 3 failed (RLS-off wall test + both route bookings); M4 slots aligned
+  to the window start → grid test FAILED; M5 past slots offered → past test FAILED; M6 client reply =
+  model text → 2 failed; M7 PGT books without email → email-first test FAILED; M8 `booked` ignored →
+  books-once test FAILED. Restored → 106 passed.
+- **Red control (F1/F6):** `availability_block` RLS disabled → raw read leaks B's booking (count 1 with
+  no tenant context), while A's and B's slot reads still isolate on the SQL filter; restored.
+- **Migration on an existing B5-era DB (`engine_dev`):** before = `CHECK (source IN ('manual','calendar'))`;
+  `scripts.init_db` run twice (idempotent) → `CHECK (… 'booking')` + the partial unique index present.
+  Prod applies it on the next boot via the start command (`init_db; uvicorn`).
+
+### ⚠ Made load-bearing (also recorded at the site)
+- **The fixed :00/:30 grid** (`compute_slots`): overlapping bookings ⇔ the same start, which is the
+  only thing `availability_booking_slot_uq` checks. Changing the slot length or the alignment without
+  revisiting the index re-opens double-booking. A window starting off-grid (9:15) loses its partial cell.
+  Zones with a :45 offset would misalign (no US zone has one).
+- **The model only proposes; the store decides; the server writes the confirmation.** Never let a
+  model-written "booked" reach the visitor on a booking turn.
+- **No weekly hours = no slots = booking off.** That is the gate the founder ruled; it needs no flag.
+- **Cancel = delete the booking's block** on the Availability tab (source tag `booking`); the slot
+  reopens at once.
+
+### What I did NOT do (named)
+- **No push, no deploy, no Neon touch.** The GO covered building. On deploy, the boot-time `init_db`
+  applies the schema change (no manual Neon step owed).
+- **No real-model conversation run.** This PC has no `ANTHROPIC_API_KEY` locally, so every route test
+  stubs the model. Whether the real model follows the flow (email → phone → offer 2-3 listed times →
+  `book`) is UNPROVEN until a live chat after deploy. Mechanism verified, outcome unproven.
+- **Prose guard not built:** on a NON-booking turn the model could still write a time or "you're booked"
+  in prose. The prompt forbids it, but no server check catches it (a regex scanner over the reply = the
+  known false-positive trap). The booking itself can never be invented; the prose can.
+- **No abuse cap on bookings:** the `booked` flag is client-held, and PGT `/chat` has no rate limit, so a
+  script could fill a calendar. Admin deletes the blocks. Slated if it ever happens.
+- **No minimum notice:** any future slot is bookable, even one 5 minutes out. A per-tenant notice setting
+  would be a founder ruling.
+- 5b calendar sync and 7 human-fork untouched.
+
+### Owed / next
+- **Founder GO to push** (Render auto-deploys; schema applies at boot).
+- **Founder-hands, after deploy:** enter PGT's real call-back hours on the Availability tab (booking turns
+  on for PGT the moment hours exist), then run one real chat on the site through to a booked call-back,
+  and confirm the email arrives and the block shows up. For a client, the same on `pgt-sample-plumbing`.
+
+---
+
 ## BRICK 4b — Client tenants (a paying local business is a tenant) — **LANDED 2026-10-25 (code + tests); live proof below**
 
 **Session:** 2026-10-25 · Opus 5.5 · founder GO (remote): "i approve any and all that you can you
