@@ -6,7 +6,7 @@ load-bearing (F5).
 
 ---
 
-## BRICK 6 — The assistant reads availability deterministically + books — **LANDED 2026-10-26 (code + tests); NOT deployed**
+## BRICK 6 — The assistant reads availability deterministically + books — **LANDED + DEPLOYED 2026-10-26** (real-model flow still unproven)
 
 **Session:** 2026-10-26 · Opus 5.5 · founder GO on the STEP-0 shape, plus the gating ruling
 "booking only for tenants that have entered weekly hours" (agreed). Rulings carried from
@@ -77,8 +77,12 @@ email first, then a confirmed call-back time, and Les calls; clone flavor = plai
   would be a founder ruling.
 - 5b calendar sync and 7 human-fork untouched.
 
+### Deploy (2026-10-26, founder GO "go")
+- Pushed `b1aed1c`; Render deploy `live` 14:32:07Z. Boot log: `init_db` "schema + RLS wall applied" at
+  14:32:01 (the CHECK widen + booking index reached Neon), Uvicorn up 14:32:04, no errors. `/health` ok
+  throughout. No booking can happen yet: PGT has no weekly hours entered, so booking is off for it.
+
 ### Owed / next
-- **Founder GO to push** (Render auto-deploys; schema applies at boot).
 - **Founder-hands, after deploy:** enter PGT's real call-back hours on the Availability tab (booking turns
   on for PGT the moment hours exist), then run one real chat on the site through to a booked call-back,
   and confirm the email arrives and the block shows up. For a client, the same on `pgt-sample-plumbing`.
