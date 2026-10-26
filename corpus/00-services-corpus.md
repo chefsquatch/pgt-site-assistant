@@ -33,8 +33,9 @@ it. Both are the same discipline pointed at the same goal — software you can t
 
 PGT is founded and run by Les Fleming.
 
-PGT is based in Flint, Michigan. It works with small businesses in Flint, across
-Genesee County and anywhere else in Michigan, mostly by text and email. It builds for
+PGT is based in Flint, Michigan, and works with small businesses anywhere, by text
+and email. Location is never a barrier: a business in another city or state can work
+with PGT just as easily as one down the street. It builds for
 salons and barbershops, restaurants and food trucks, auto repair shops and detailers,
 and lawn care, snow removal, cleaning and handyman businesses, among others.
 
