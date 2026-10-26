@@ -25,6 +25,7 @@ resolved slug through `tenant_slug`, the per-slug resolution this seam was built
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any
 
 from . import db
@@ -64,9 +65,14 @@ def create_lead(
     return db.with_tenant(conn, tenant_id, _insert)
 
 
+# Brick 7: a lead is 'new' until the owner marks it 'handled'. 'new' leads are the ones still
+# waiting on a person, so the admin view lists them first. The schema CHECK holds the same set.
+LEAD_STATUSES = ("new", "handled")
+
+
 def list_leads(conn: db.psycopg.Connection, tenant_id: Any) -> list[dict]:
-    """Read a tenant's captured leads, newest first — the read-side counterpart to
-    create_lead, for the admin view (Brick 4).
+    """Read a tenant's captured leads: the ones still waiting on a person ('new') first,
+    then newest first. The read-side counterpart to create_lead, for the admin view (Brick 4).
 
     Defense in depth (F6): runs inside with_tenant (defense one) AND filters
     `tenant_id` in SQL (defense two), so it returns only this tenant's leads even where
@@ -77,7 +83,8 @@ def list_leads(conn: db.psycopg.Connection, tenant_id: Any) -> list[dict]:
     def _select(c: db.psycopg.Connection):
         return c.execute(
             "SELECT id, name, email, phone, problem_summary, source, status, created_at "
-            "FROM lead WHERE tenant_id = %s ORDER BY created_at DESC",
+            "FROM lead WHERE tenant_id = %s "
+            "ORDER BY (status = 'new') DESC, created_at DESC",
             (tenant_id,),
         ).fetchall()
 
@@ -95,6 +102,27 @@ def list_leads(conn: db.psycopg.Connection, tenant_id: Any) -> list[dict]:
         }
         for r in rows
     ]
+
+
+def set_lead_status(conn: db.psycopg.Connection, tenant_id: Any, lead_id: str, status: str) -> bool:
+    """Mark one of the tenant's leads 'new' or 'handled' (Brick 7). Returns False when no such
+    lead exists FOR THIS TENANT, so another tenant's lead id is indistinguishable from a
+    missing one. Defense in depth (F6): inside with_tenant AND `WHERE tenant_id = %s`."""
+    if status not in LEAD_STATUSES:
+        raise ValueError(f"status must be one of {', '.join(LEAD_STATUSES)}")
+    try:
+        uuid.UUID(str(lead_id))
+    except ValueError:
+        return False
+    n = db.with_tenant(
+        conn,
+        tenant_id,
+        lambda c: c.execute(
+            "UPDATE lead SET status = %s WHERE id = %s AND tenant_id = %s",
+            (status, lead_id, tenant_id),
+        ).rowcount,
+    )
+    return n > 0
 
 
 def capture_lead(

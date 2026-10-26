@@ -50,6 +50,9 @@ class Reply:
     problem_summary: str | None = None
     sources: list[str] = field(default_factory=list)
     book: dict | None = None  # Brick 6: {slot, name, phone, email} the visitor chose
+    # Brick 7: who to reply to, asked for before the handoff so the lead Les gets is reachable.
+    visitor_email: str | None = None
+    visitor_name: str | None = None
 
 
 # --- Booking (Brick 6, 2026-10-26) ------------------------------------------------------
@@ -165,6 +168,11 @@ commitment on PGT's behalf into it — you are not authorized to make commitment
 the problem, clean, so Les picks it up already informed.
 - Keep handoff_ready=false until you actually have enough to summarize. A greeting is not a \
 handoff.
+- Before you hand off, ask once for their email so Les can reply to them directly. When they \
+give it, put it in visitor_email (and their name in visitor_name if they gave one). If they would \
+rather not share it, hand off anyway with visitor_email null. Only put in what they actually typed.
+- When you hand off with their email, you may tell them Les has their summary and will reply by \
+email. Never promise when.
 {_pgt_callback_section(slots_text)}
 VOICE
 - Warm, direct, and concise. You sound like a sharp studio assistant, not a chatbot or a \
@@ -181,7 +189,9 @@ Respond with ONE JSON object and nothing else. No prose outside the JSON. Shape:
   "in_corpus": <true if every PGT claim in reply is grounded in the corpus; false if you \
 declined to answer because the corpus doesn't cover it, or the message needed no PGT claim>,
   "handoff_ready": <true only when you've set a real problem_summary this turn>,
-  "problem_summary": <the problem summary string, or null>{book_format}
+  "problem_summary": <the problem summary string, or null>,
+  "visitor_email": <the email they gave you, or null>,
+  "visitor_name": <the name they gave you, or null>{book_format}
 }}
 Rules for the flags: if you refused/deflected a PGT question for lack of grounding, \
 in_corpus MUST be false. If you made grounded PGT claims, in_corpus is true. For pure \
@@ -235,7 +245,15 @@ def _parse_model_json(text: str) -> Reply:
         handoff_ready=handoff,
         problem_summary=summary,
         book=_parse_book(data, need_email=True),
+        visitor_email=_clean_email(data.get("visitor_email")),
+        visitor_name=_clean(data.get("visitor_name")),
     )
+
+
+def _clean_email(v) -> str | None:
+    """An email only counts if it looks like one; the model never gets to store a guess."""
+    v = _clean(v)
+    return v if v and "@" in v and " " not in v else None
 
 
 def _no_em_dash(text: str) -> str:

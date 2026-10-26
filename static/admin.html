@@ -35,6 +35,8 @@
   .tag{display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
   .tag.assistant{color:var(--amber);border-color:rgba(224,160,32,.4)}
   .tag.contact{color:var(--green);border-color:rgba(78,192,122,.4)}
+  .tag.new,.tag.edge{color:#ff6b5b;border-color:rgba(255,107,91,.45)}
+  button.lead-status{margin-top:4px;font-size:11px;padding:2px 8px;width:auto}
   .muted{color:var(--muted)}
   .count{font-size:13px;color:var(--muted);margin:0 0 14px}
   .empty{color:var(--muted);padding:26px 0;text-align:center}
@@ -168,14 +170,16 @@
       return;
     }
     var rows = leads.map(function(l){
-      var tag = l.source === "contact" ? "contact" : "assistant";
+      var tag = l.source === "contact" ? "contact" : (l.source === "edge" ? "edge" : "assistant");
       return '<tr>'
         + '<td>'+(l.name ? esc(l.name) : '<span class="muted">—</span>')+'</td>'
         + '<td>'+(l.phone ? esc(l.phone) : '<span class="muted">—</span>')+'</td>'
         + '<td>'+(l.email ? esc(l.email) : '<span class="muted">—</span>')+'</td>'
         + '<td>'+esc(l.problem_summary || '')+'</td>'
         + '<td><span class="tag '+tag+'">'+esc(l.source)+'</span></td>'
-        + '<td>'+esc(l.status)+'</td>'
+        + '<td>'+(l.status === "new" ? '<span class="tag new">needs a person</span>' : '<span class="muted">handled</span>')
+        + ' <button type="button" class="lead-status" data-id="'+esc(l.id)+'" data-to="'+(l.status === "new" ? "handled" : "new")+'">'
+        + (l.status === "new" ? "Mark handled" : "Reopen")+'</button></td>'
         + '<td class="when">'+esc(fmtWhen(l.created_at))+'</td>'
         + '</tr>';
     }).join("");
@@ -183,6 +187,17 @@
       '<table><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Request</th><th>Source</th><th>Status</th><th>When</th></tr></thead>'
       + '<tbody>'+rows+'</tbody></table>';
   }
+
+  // Brick 7: mark a lead handled (or reopen it), then re-render; waiting leads sort first.
+  $("leads-body").addEventListener("click", function(e){
+    var b = e.target.closest && e.target.closest("button.lead-status");
+    if(!b) return;
+    b.disabled = true;
+    api("POST", "/admin/leads/"+encodeURIComponent(b.getAttribute("data-id"))+"/status", {status: b.getAttribute("data-to")})
+      .then(function(){ return fetch("/admin/leads", {credentials:"same-origin"}).then(function(r){ return r.json(); }); })
+      .then(renderLeads)
+      .catch(function(){ b.disabled = false; });
+  });
 
   function loadLeads(){
     fetch("/admin/leads", {credentials:"same-origin"})

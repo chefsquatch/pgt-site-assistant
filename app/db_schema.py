@@ -140,6 +140,12 @@ ALTER TABLE availability_block ADD CONSTRAINT availability_block_source_check
 -- is what makes the second of two simultaneous bookings fail instead of double-booking.
 CREATE UNIQUE INDEX IF NOT EXISTS availability_booking_slot_uq
     ON availability_block (tenant_id, starts_at) WHERE source = 'booking';
+
+-- Human-fork (Brick 7, 2026-10-26). A lead is 'new' until the owner marks it 'handled'
+-- (app/leads.py LEAD_STATUSES). Nothing wrote status before this brick, so every existing
+-- row is 'new' and the CHECK applies cleanly; drop + add keeps it idempotent.
+ALTER TABLE lead DROP CONSTRAINT IF EXISTS lead_status_check;
+ALTER TABLE lead ADD CONSTRAINT lead_status_check CHECK (status IN ('new', 'handled'));
 """
 
 

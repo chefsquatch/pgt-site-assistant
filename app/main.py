@@ -4,8 +4,8 @@ Endpoints:
   GET  /            -> a standalone demo page hosting the widget (static/index.html)
   GET  /widget.js   -> the embeddable widget script (served with permissive CORS)
   GET  /health      -> liveness + how many corpus sections are loaded
-  POST /chat        -> {history:[{role,content}], booked} -> {booking, reply, in_corpus, handoff_ready,
-                        problem_summary, sources, founder_email}
+  POST /chat        -> {history:[{role,content}], booked, handed_off} -> {booking, reply, in_corpus,
+                        handoff_ready, problem_summary, forked, visitor_email, sources, founder_email}
 
 Every expected failure (missing key, API failure, rate limit, empty message) is
 caught and returned as a clean JSON message that includes the email fallback —
@@ -49,7 +49,7 @@ from .contact import (
     send_lead,
 )
 from .db_schema import PGT_TENANT_SLUG
-from .leads import capture_lead, list_leads
+from .leads import LEAD_STATUSES, capture_lead, list_leads, set_lead_status
 
 app = FastAPI(title="PGT Site Assistant")
 
@@ -105,6 +105,9 @@ class ChatRequest(BaseModel):
     history: list[Turn]
     # Brick 6: the widget sets this once a booking was made, so one conversation books once.
     booked: bool = False
+    # Brick 7: the widget sets this once the conversation was forked to Les, so one
+    # conversation sends him one lead.
+    handed_off: bool = False
 
 
 def _email_fallback(message: str) -> dict:
@@ -134,6 +137,41 @@ def health() -> dict:
     }
 
 
+# --- Human-fork at the honest edges (Brick 7, 2026-10-26) --------------------------------
+# Every edge the assistant can't take further reaches a person. A handoff is stored AND
+# emailed (before this brick it was only stored, so Les saw it only by opening /admin). A
+# failed turn (no key, model down) leaves an 'edge' lead, so a dead conversation still shows
+# up on the leads page. Both are best-effort: they never break the reply the visitor gets.
+
+_PGT_FALLBACK_TENANT = {"name": "Precision Guesswork Technologies", "slug": PGT_TENANT_SLUG,
+                        "notify_email": None}
+
+
+def _record_edge(history: list[dict], why: str, tenant_slug: str = PGT_TENANT_SLUG) -> None:
+    """A turn the assistant could not answer: store it as an 'edge' lead for a person."""
+    last = next((m["content"] for m in reversed(history) if m["role"] == "user"), "")
+    capture_lead(
+        problem_summary=f"The assistant could not answer ({why}). Last message: {last.strip()[:500]}",
+        source="edge",
+        tenant_slug=tenant_slug,
+    )
+
+
+def _pgt_fork(tenant: dict | None, result, transcript: list[dict]) -> None:
+    """Store the handoff as a lead and email it to Les with the conversation. Never raises.
+    The email goes out even when the store is down (the fallback tenant has the same
+    no-notify_email shape, so notify sends it to LEAD_INBOX)."""
+    capture_lead(
+        problem_summary=result.problem_summary,
+        name=result.visitor_name,
+        email=result.visitor_email,
+        source="assistant",
+    )
+    lead = {"name": result.visitor_name, "email": result.visitor_email, "phone": None,
+            "summary": result.problem_summary, "urgent": False}
+    notify.email_lead(tenant or _PGT_FALLBACK_TENANT, lead, transcript)
+
+
 @app.post("/chat")
 def chat(req: ChatRequest) -> JSONResponse:
     history = [{"role": t.role, "content": t.content} for t in req.history]
@@ -143,16 +181,19 @@ def chat(req: ChatRequest) -> JSONResponse:
     try:
         result = respond(history, availability.slots_for_prompt(slots) or None)
     except ConfigError as exc:
+        _record_edge(history, "assistant not configured")
         return JSONResponse(status_code=503, content=_email_fallback(str(exc)))
     except GenerationError as exc:
+        _record_edge(history, "assistant service failed")
         return JSONResponse(status_code=502, content=_email_fallback(str(exc)))
     except AssistantError as exc:  # empty message, etc.
         return JSONResponse(status_code=400, content=_email_fallback(str(exc)))
 
     # System of record: when the assistant has qualified a visitor and summarized their
-    # problem, persist it as a lead (source='assistant'). Best-effort — capture_lead
-    # never raises, so a store hiccup can't break the reply the visitor is waiting on.
+    # problem, persist it as a lead (source='assistant') and fork it to Les (Brick 7).
+    # Best-effort: neither the store write nor the email can break the visitor's reply.
     booked = None
+    forked = False
     if result.book and tenant and slots:
         # The model proposed a slot; the store decides, and the reply is the store's answer.
         outcome = booking.try_book(
@@ -163,8 +204,10 @@ def chat(req: ChatRequest) -> JSONResponse:
             pgt=True,
         )
         result.reply, booked = outcome.reply, outcome.slot
-    elif result.handoff_ready and result.problem_summary:
-        capture_lead(problem_summary=result.problem_summary, source="assistant")
+    elif result.handoff_ready and result.problem_summary and not req.handed_off:
+        _pgt_fork(tenant or _pgt_tenant(), result,
+                  history + [{"role": "assistant", "content": result.reply}])
+        forked = True
 
     return JSONResponse(
         content={
@@ -173,10 +216,26 @@ def chat(req: ChatRequest) -> JSONResponse:
             "in_corpus": result.in_corpus,
             "handoff_ready": result.handoff_ready,
             "problem_summary": result.problem_summary,
+            "forked": forked,
+            "visitor_email": result.visitor_email if forked else None,
             "sources": result.sources,
             "founder_email": config.FOUNDER_EMAIL,
         }
     )
+
+
+def _pgt_tenant() -> dict | None:
+    """PGT's tenant row, or None when the store is unset or down."""
+    try:
+        conn = _open_store()
+    except Exception:
+        return None
+    try:
+        return db.resolve_tenant(conn, PGT_TENANT_SLUG)
+    except Exception:
+        return None
+    finally:
+        conn.close()
 
 
 def _pgt_booking_context() -> tuple[dict | None, list]:
@@ -298,8 +357,10 @@ def client_chat(slug: str, req: ClientChatRequest, request: Request) -> JSONResp
             slots_text=availability.slots_for_prompt(slots) or None,
         )
     except ConfigError as exc:
+        _record_edge(history, "assistant not configured", tenant_slug=slug)
         return JSONResponse(status_code=503, content=_client_fallback(str(exc)))
     except GenerationError as exc:
+        _record_edge(history, "assistant service failed", tenant_slug=slug)
         return JSONResponse(status_code=502, content=_client_fallback(str(exc)))
     except AssistantError as exc:
         return JSONResponse(status_code=400, content=_client_fallback(str(exc)))
@@ -512,6 +573,30 @@ def admin_leads(ctx: dict = Depends(require_admin)) -> JSONResponse:
     finally:
         conn.close()
     return JSONResponse(content={"leads": leads, "count": len(leads)})
+
+
+class LeadStatusRequest(BaseModel):
+    status: str
+
+
+@app.post("/admin/leads/{lead_id}/status")
+def admin_lead_status(lead_id: str, req: LeadStatusRequest, ctx: dict = Depends(require_admin)) -> JSONResponse:
+    """Mark one of the signed-in tenant's leads 'new' or 'handled' (Brick 7). Another
+    tenant's lead id is a 404, exactly like a missing one (set_lead_status filters
+    tenant_id, F6)."""
+    if req.status not in LEAD_STATUSES:
+        raise HTTPException(status_code=400, detail=f"status must be one of {', '.join(LEAD_STATUSES)}")
+    try:
+        conn = _open_store()
+    except Exception:
+        raise HTTPException(status_code=503, detail="The store is unavailable.")
+    try:
+        ok = set_lead_status(conn, ctx["tenant"]["id"], lead_id, req.status)
+    finally:
+        conn.close()
+    if not ok:
+        raise HTTPException(status_code=404, detail="No such lead.")
+    return JSONResponse(content={"ok": True, "status": req.status})
 
 
 # --- Availability (Brick 5) — the admin edits the schedule; it lives as data (F2). ----

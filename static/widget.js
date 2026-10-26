@@ -66,6 +66,7 @@
   var history = []; // [{role, content}]
   var busy = false;
   var booked = false; // Brick 6: set once the server confirms a call-back booking
+  var handedOff = false; // Brick 7: set once the server has forked this conversation to Les
 
   // Wake the service on page load (fire-and-forget). On a spun-down free-tier
   // instance this starts the ~cold start early, so by the time a visitor opens
@@ -341,6 +342,14 @@
     log.appendChild(b);
     scrollDown();
   }
+  function addSent(email) {
+    // Brick 7: the server already emailed Les the summary and this conversation.
+    var d = document.createElement("div");
+    d.className = "pgtw-grounded";
+    d.innerHTML = CHECK_ICON + "<span>Sent to Les. He'll reply to " + esc(email) + "</span>";
+    log.appendChild(d);
+    scrollDown();
+  }
   function addError(fallback) {
     var d = document.createElement("div");
     d.className = "pgtw-err";
@@ -399,7 +408,7 @@
     fetch(API + "/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ history: history, booked: booked }),
+      body: JSON.stringify({ history: history, booked: booked, handed_off: handedOff }),
     })
       .then(function (r) {
         return r.json().then(function (d) { return { ok: r.ok, data: d }; });
@@ -416,7 +425,12 @@
         if (d.in_corpus) addGrounded();
         // A booking's confirmation IS the reply (written by the server from the store).
         if (d.booking) booked = true;
-        else if (d.handoff_ready && d.problem_summary) addHandoff(d.problem_summary);
+        else if (d.handoff_ready && d.problem_summary) {
+          if (d.forked) handedOff = true;
+          // With their email, Les already has it; without one, the form is how he replies.
+          if (d.forked && d.visitor_email) addSent(d.visitor_email);
+          else addHandoff(d.problem_summary);
+        }
       })
       .catch(function () {
         hideTyping();

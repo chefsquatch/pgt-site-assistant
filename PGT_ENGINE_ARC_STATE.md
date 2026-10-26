@@ -6,6 +6,69 @@ load-bearing (F5).
 
 ---
 
+## BRICK 7 — Human-fork at the honest edges — **LANDED (code + proof) 2026-10-26, NOT YET PUSHED/DEPLOYED**
+
+**Session:** 2026-10-26 · Opus 5.5 · founder "go all 4" on the STEP-0 shape. There was no written B7
+spec (only the ACTIVE_ARCS row); the four pieces below are the measured gaps the founder approved.
+
+### What was built
+- **1 · A PGT handoff reaches Les.** `main._pgt_fork`: the handoff is stored (as before) AND emailed
+  through the B4b rail (`notify.email_lead`, PGT has no notify_email → LEAD_INBOX, `reply_to` = the
+  visitor's email, the conversation in the body). Before this brick a chat handoff was only stored,
+  so Les saw it only by opening /admin. With the store down the email still goes (fallback tenant
+  dict with the same no-notify_email shape).
+- **2 · Email before the handoff.** PGT prompt (THE HANDOFF) now asks once for the visitor's email
+  before handing off; new JSON fields `visitor_email` / `visitor_name`, parsed by `_clean_email`
+  (must contain `@`, no spaces; else None, never a guess). No email given → hand off anyway.
+  `/chat` takes `handed_off` (one conversation forks once) and returns `forked` + `visitor_email`.
+  Widget: forked with an email → "Sent to Les. He'll reply to <email>" (no button); without one → the
+  existing "Send this to Les" form button as before.
+- **3 · A failed turn leaves a trace.** `main._record_edge`: a ConfigError/GenerationError on `/chat`
+  or `/t/<slug>/chat` stores a `source='edge'` lead under THAT tenant (why + the last message, 500
+  chars). A bad request (empty message, 400) is not an edge. No email for edges (record only).
+- **4 · Handled toggle.** `leads.LEAD_STATUSES = ('new','handled')`, `set_lead_status` (with_tenant +
+  `WHERE id AND tenant_id`, F6; non-uuid or other tenant's id → False), `list_leads` now orders
+  `(status='new') DESC, created_at DESC`. Route `POST /admin/leads/{id}/status` behind require_admin
+  (400 bad status, 404 missing/other tenant). Admin page: red "needs a person" tag + Mark handled /
+  Reopen button; `edge` source tag in red. Schema: idempotent `lead_status_check` CHECK (drop + add).
+
+### Proof, transcribed (portable PG 16.4, port 54329, `engine_test`)
+- **126 passed** (was 106; +20 in `tests/test_human_fork.py`).
+- **Mutations watched red, then restored (7/7 RED):** M1 status UPDATE drops its tenant_id filter →
+  2 failed (lib cross-tenant + route 404); M2 handoff not emailed → 3 failed; M3 `handed_off` ignored
+  → forks-once FAILED; M4 failed turn records nothing → edge test FAILED; M5 junk email trusted → junk
+  test FAILED; M6 waiting-first sort removed → sort test FAILED; M7 visitor email not stored → handoff
+  test FAILED. Restored → 126 passed.
+- **F1/F6:** no new scoped table, so no new RLS red control owed (lead's control in
+  test_tenant_wall.py unchanged + passing). The cross-tenant status tests run as the superuser (RLS
+  bypassed, the Neon condition), so they hold on the SQL filter alone; M1 is that proof.
+- **Migration:** `scripts.init_db` run twice on `engine_dev` (B6-era) → `CHECK (status = ANY
+  (ARRAY['new','handled']))`, no error. Prod safety: `git log -S status` shows no code ever wrote
+  `lead.status`, so every Neon row is the default 'new' and the CHECK applies at boot. (Could not read
+  Neon directly: no DATABASE_URL in the new PC's local `.env`.)
+- Not proven: a REAL-model handoff (all route tests stub the model). Owed live check below.
+
+### ⚠ LOAD-BEARING
+- `lead_status_check` and `LEAD_STATUSES` must change together (schema comment points at it).
+- `_pgt_fork` sends even with the store down: the fallback tenant dict must keep `notify_email: None`
+  or the email would go nowhere useful.
+
+### What I did NOT do
+- No email alert for `edge` leads (record only, as proposed). An API outage stores one edge lead per
+  failed turn (no dedup); the client route is rate limited, PGT's `/chat` is not.
+- Client honest declines without contact info still store nothing: the client prompt already steers
+  to capture the lead, and nothing was approved there.
+- No push/deploy (separate founder GO). 5b calendar sync untouched.
+
+### Owed / next
+- **Founder GO to push** → Render auto-deploys; boot `init_db` applies the CHECK.
+- **Live check (founder-hands or with GO):** one real chat on the site to a handoff with an email →
+  Les's inbox gets "New lead: <name> (Precision Guesswork Technologies)", reply-to the visitor; the
+  lead shows "needs a person" on /admin; Mark handled moves it down. Then delete the test lead by
+  exact id.
+
+---
+
 ## BRICK 6 — The assistant reads availability deterministically + books — **LANDED + DEPLOYED + PROVEN LIVE 2026-10-26**
 
 **Session:** 2026-10-26 · Opus 5.5 · founder GO on the STEP-0 shape, plus the gating ruling
