@@ -28,7 +28,7 @@ brick-one red-control proven on a **Neon test branch**.
 | 5 | Availability store (admin edits schedule/availability) | 1 | **LANDED 2026-10-24** (68 passed; 3 walled tables + red control ×3 + F6 mutations red; deterministic `open_windows()` DST-safe; admin Availability tab; ⚠ NOT deployed: Neon `init_db` owed before the deploy) |
 | 5b | Calendar sync (business's busy times → `availability_block` source='calendar') | 5 | SLATED (founder: engine must do "both"; Google OAuth = founder setup) |
 | 6 | Assistant reads availability deterministically + books | 5 | **LANDED 2026-10-26** (106 passed; 8 mutations red; 30-min fixed-grid slots, instant `source='booking'` block, unique index vs double-booking; model proposes, store decides, server writes the reply; booking only when hours exist; DEPLOYED + PROVEN LIVE 2026-10-26 on a real-model chat) |
-| 7 | Human-fork at the honest edges | 2,6 | **LANDED 2026-10-26** (126 passed; 7 mutations red; PGT handoff stored + emailed to Les, email asked before handoff, failed turns leave an `edge` lead, owner Mark handled/Reopen with waiting leads first; ⚠ NOT pushed/deployed) |
+| 7 | Human-fork at the honest edges | 2,6 | **LANDED 2026-10-26** (126 passed; 7 mutations red; PGT handoff stored + emailed to Les, email asked before handoff, failed turns leave an `edge` lead, owner Mark handled/Reopen with waiting leads first; DEPLOYED + PROVEN LIVE 2026-10-26 on a real-model handoff, founder confirmed the email) |
 
 **One brick per cleared session. Prove it, record it, stop.**
 
@@ -64,7 +64,7 @@ brick-one red-control proven on a **Neon test branch**.
   (Mon-Fri 10-16) entered; real-model booking PROVEN LIVE (founder confirmed the booking email; test block + lead deleted by exact id, slot open again). Tuning DONE 2026-10-26 (`5f6d9b6`): at most three times per reply + no em dashes, live-verified on a real-model chat (3 times offered, nothing booked). Open: no minimum notice, no booking abuse cap, no
   server check on time/"booked" prose outside booking turns.
 - **B7:** LANDED (code). The old "RESEND_API_KEY + verified domain" note was stale (alerts already
-  send via CLIENT_RESEND_API_KEY). Owed: founder GO to push (boot applies `lead_status_check`); one
-  real-model handoff on the live site to Les's inbox, then delete the test lead by exact id.
+  send via CLIENT_RESEND_API_KEY). DEPLOYED + PROVEN LIVE 2026-10-26 (founder confirmed the
+  alert email + reply-to; test lead deleted by exact id). Nothing owed.
 - **B4b client alerts:** DONE 2026-10-26 — `CLIENT_RESEND_API_KEY` set on Render (verified-domain
   key from tinker), live lead test emailed (founder confirmed receipt).

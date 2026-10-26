@@ -6,7 +6,7 @@ load-bearing (F5).
 
 ---
 
-## BRICK 7 — Human-fork at the honest edges — **LANDED (code + proof) 2026-10-26, NOT YET PUSHED/DEPLOYED**
+## BRICK 7 — Human-fork at the honest edges — **LANDED + DEPLOYED + PROVEN LIVE 2026-10-26**
 
 **Session:** 2026-10-26 · Opus 5.5 · founder "go all 4" on the STEP-0 shape. There was no written B7
 spec (only the ACTIVE_ARCS row); the four pieces below are the measured gaps the founder approved.
@@ -60,12 +60,23 @@ spec (only the ACTIVE_ARCS row); the four pieces below are the measured gaps the
   to capture the lead, and nothing was approved there.
 - No push/deploy (separate founder GO). 5b calendar sync untouched.
 
+### Deploy + live proof (2026-10-26, founder "push")
+- `76c9b99` reached origin with a parallel session's corpus commit `022c81b` on top; Render deploy
+  `dep-dbfpnqvavr4c73a0uk20` live 18:29:50Z. Boot: `init_db` "schema + RLS wall applied" 18:29:43 (the
+  `lead_status_check` CHECK reached Neon with no error), Uvicorn up 18:29:45.
+- Real-model chat on prod `/chat`, 3 turns: the bot qualified first, said it would ask for the email
+  before passing it on, then on "Fork Test (Claude), test-visitor@example.com" replied "Les has your
+  summary and will reply by email to test-visitor@example.com" with `forked:true`, `visitor_email` set.
+- Neon read via Render job `job-dbfpp38ae00c739jda60`: lead `0dbac936-044b-4f9e-88cb-7311b5e17419`,
+  name + email stored, source 'assistant', status 'new'. **Founder confirmed** the alert email arrived
+  and Reply addresses the visitor. Test lead DELETED by exact id (job `job-dbfpsh0m7kps739e5pfg`,
+  "deleted 1").
+- Observed, not a B7 bug: after the fork the bot also offered a call-back (PGT has hours), which is the
+  B6 flow working alongside. App INFO logs don't print on Render, so the email send is proven by the
+  founder's inbox, not the log.
+
 ### Owed / next
-- **Founder GO to push** → Render auto-deploys; boot `init_db` applies the CHECK.
-- **Live check (founder-hands or with GO):** one real chat on the site to a handoff with an email →
-  Les's inbox gets "New lead: <name> (Precision Guesswork Technologies)", reply-to the visitor; the
-  lead shows "needs a person" on /admin; Mark handled moves it down. Then delete the test lead by
-  exact id.
+- None for B7. The 7-brick arc's only remaining brick is 5b calendar sync (Google OAuth = founder setup).
 
 ---
 
