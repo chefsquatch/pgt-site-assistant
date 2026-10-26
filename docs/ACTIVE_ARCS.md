@@ -57,3 +57,5 @@ brick-one red-control proven on a **Neon test branch**.
   no video, phone only as a call-back.
 - **B4b:** per client: `corpus_tenants/<slug>/` + `scripts.add_tenant` + `scripts.seed_admin` (TENANT_SLUG) + widget tag on their site. SMS alerts = founder decision (Twilio account, cost) once a client pays.
 - **B7:** `RESEND_API_KEY` + verified sender domain (already owed).
+- **B4b client alerts:** DONE 2026-10-26 — `CLIENT_RESEND_API_KEY` set on Render (verified-domain
+  key from tinker), live lead test emailed (founder confirmed receipt).

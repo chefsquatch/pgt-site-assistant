@@ -75,6 +75,11 @@ account + A2P registration); email only until a client is paying.
   control (alert on the old key) → FAILED; restored → 82 passed. **Owed (founder hands): paste the
   verified-domain account's Resend key into CLIENT_RESEND_API_KEY on this service, then re-run the
   lead test.** Until then, client leads are stored and visible on /admin but not emailed.
+- **✅ FIXED + PROVEN LIVE 2026-10-26:** tinker's `RESEND_API_KEY` (the verified-domain account)
+  copied server-side via the Render API into `CLIENT_RESEND_API_KEY` on pgt-site-assistant (never
+  printed; read-back matched), redeployed (`dep-dbflns1srm7s73feplvg` live). Re-ran the lead test on
+  `/t/pgt-sample-plumbing/chat` ("Les Test, 810-555-0142", leaking water heater) → `{urgent:true}`,
+  no alert error in the Render log, and the founder confirmed the alert emails arrived (two: to + cc).
 
 ### What I did NOT do
 - SMS/text alerts (F3, founder account needed). Lead status editing. Per-tenant branding of /admin.
