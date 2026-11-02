@@ -738,3 +738,22 @@ DEPLOY only (Brick 2+), not for this proof.
   Guided setup deferred to when Brick 2 needs the live store; the wall itself is proven.
 - **`TEST_DATABASE_URL`** — optional; only needed to re-run the wall test in CI/prod.
   Any Postgres works (proven locally this session).
+
+---
+
+## 2026-11-02 — corpus: AI App Rescue (not a numbered brick)
+
+- **What landed:** `8f6a9d9` adds an "AI App Rescue" section to `corpus/00-services-corpus.md`
+  (fix/finish apps built with Lovable, Bolt, Replit, Cursor, v0, ChatGPT; free look then fixed
+  price; hourly for small fixes; the assistant must NOT quote a dollar amount) and the page link
+  `https://precisionguessworktech.com/app-rescue.html` to `corpus/01-public-links.md`.
+  Mirrors the new site page (pgt-website `92242ee`).
+- **Freezes:** F2 honored (prose grounding only, no availability/slot claims). F1/F6 untouched,
+  F3 $0, F4 existing corpus rail.
+- **Proof:** `load_corpus('site')` contains the section. Suite: 36 passed, 90 skipped (the DB
+  wall tests skip: no local test Postgres on the new PC). Render deploy of `8f6a9d9` reached
+  `live`. Real-model `/chat` on prod, two probes: "Lovable login broke, every fix breaks
+  something" → named AI App Rescue + the 4-step process; "how much to fix a Bolt app" → no
+  dollar amount, free look then fixed price, email Les. Neither probe gave an email, so no lead.
+- **Did NOT do:** no code, schema or booking changes. 5b stays ON HOLD.
+- **Owed:** none.
