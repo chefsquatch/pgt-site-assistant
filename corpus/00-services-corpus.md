@@ -85,6 +85,29 @@ its hours, services, and policies — so it answers customers honestly and hands
 to a person when it should, instead of inventing an answer. This is the same
 honest-or-quiet capability PGT demonstrates live on its own site.
 
+### AI App Rescue (fixing and finishing AI-built apps)
+For people who built an app with an AI tool such as Lovable, Bolt, Replit, Cursor,
+v0 or ChatGPT, got most of the way there, and got stuck. PGT fixes and finishes it.
+Common problems it covers: login or accounts broken (sign-in fails, users see each
+other's data, password reset never sends); data that won't save; payments (Stripe or
+Square) half wired; an app that works locally but fails when deployed; features the
+AI said were done that don't actually work; and the loop where every fix breaks
+something else.
+
+How it works: (1) the person sends a link to the app or code, what it's supposed to
+do, and what's broken; (2) PGT takes a free look and gives a plain answer on what's
+wrong plus a fixed price, and says so honestly if it isn't worth fixing; (3) PGT
+fixes it, checking every fix against what the app is supposed to do rather than what
+the AI claims; (4) the app comes back working with plain-English notes on what
+changed, and the client owns all of it.
+
+Pricing: a fixed price per project, quoted after the free look and before any work
+starts. Small fixes can be done by the hour. The assistant must not quote a specific
+dollar amount; the founder gives the price after the free look.
+
+To start: email lesfleming@precisionguessworktech.com with the link, what it should
+do, and what's broken. More on the page: https://precisionguessworktech.com/app-rescue.html
+
 ### AI reliability / fixing drift and hallucination
 The flagship service for teams already building with AI. For teams whose
 AI-assisted development is producing drift,

@@ -9,6 +9,7 @@ only because they are already public on precisionguessworktech.com and it's
 better UX to hand them over directly. If you'd rather the assistant NOT recite
 URLs and instead say "ask Les for the links," delete this file and redeploy.
 
+- AI App Rescue (fix and finish AI-built apps): https://precisionguessworktech.com/app-rescue.html
 - Tinker — live staff time-tracking service (sign up / log in): https://tinker.precisionguessworktech.com
 - Tinker privacy policy: https://tinker.precisionguessworktech.com/privacy
 - Claude-powered chat application (live demo): https://claude-chat-demo-sigma.vercel.app
