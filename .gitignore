@@ -18,3 +18,10 @@ pip.log
 Thumbs.db
 .vscode/
 .idea/
+
+# internal working notes: local only (this repo is public).
+# Untracked 2026-11-03 (founder option b); copies in git history before then stay public.
+PGT_ENGINE_ARC_STATE.md
+canon/SESSION_CONSTITUTION.md
+docs/ACTIVE_ARCS.md
+docs/ACTIVITY_LOG.md
